@@ -32,6 +32,7 @@ public sealed partial class Logger
 
     private sealed record PreparedConfiguration(
         LoggingConfiguration Configuration,
+        bool ConsoleLoggingEnabled,
         FileTarget? FileTarget,
         string? FilePath,
         DateTime ActiveFileDate,
@@ -40,12 +41,12 @@ public sealed partial class Logger
 
     private void InitializeBackend()
     {
-        var prepared = PrepareConfigurationLocked(filePath: null);
+        var prepared = PrepareConfigurationLocked(filePath: null, consoleLoggingEnabled: _consoleLoggingEnabled);
         ApplyPreparedConfigurationLocked(prepared);
         CommitPreparedConfigurationLocked(prepared);
     }
 
-    private PreparedConfiguration PrepareConfigurationLocked(string? filePath)
+    private PreparedConfiguration PrepareConfigurationLocked(string? filePath, bool consoleLoggingEnabled)
     {
         var configuration = new LoggingConfiguration(_logFactory);
 
@@ -56,19 +57,22 @@ public sealed partial class Logger
             includeEventProperties: false,
             includeEntryMetadata: false);
 
-        var stdoutTarget = new ExactConsoleTarget("stdout", useStandardError: false)
+        if (consoleLoggingEnabled)
         {
-            Layout = new PhysicalOutputLayout(consoleLineLayout, _options.ConsoleFragmentLayout),
-            AutoFlush = true
-        };
+            var stdoutTarget = new ExactConsoleTarget("stdout", useStandardError: false)
+            {
+                Layout = new PhysicalOutputLayout(consoleLineLayout, _options.ConsoleFragmentLayout),
+                AutoFlush = true
+            };
 
-        var stderrTarget = new ExactConsoleTarget("stderr", useStandardError: true)
-        {
-            Layout = new PhysicalOutputLayout(consoleLineLayout, _options.ConsoleFragmentLayout),
-            AutoFlush = true
-        };
+            var stderrTarget = new ExactConsoleTarget("stderr", useStandardError: true)
+            {
+                Layout = new PhysicalOutputLayout(consoleLineLayout, _options.ConsoleFragmentLayout),
+                AutoFlush = true
+            };
 
-        AddConsoleRules(configuration, stdoutTarget, stderrTarget);
+            AddConsoleRules(configuration, stdoutTarget, stderrTarget);
+        }
 
         FileTarget? fileTarget = null;
         var activeFileDate = _currentDateProvider().Date;
@@ -105,6 +109,7 @@ public sealed partial class Logger
 
         return new PreparedConfiguration(
             configuration,
+            consoleLoggingEnabled,
             fileTarget,
             filePath,
             activeFileDate,
@@ -141,6 +146,7 @@ public sealed partial class Logger
 
     private void CommitPreparedConfigurationLocked(PreparedConfiguration prepared)
     {
+        _consoleLoggingEnabled = prepared.ConsoleLoggingEnabled;
         _fileTarget = prepared.FileTarget;
         _fileLogPath = prepared.FilePath;
         _activeFileDate = prepared.ActiveFileDate;
@@ -153,19 +159,34 @@ public sealed partial class Logger
         ExactConsoleTarget stdoutTarget,
         ExactConsoleTarget stderrTarget)
     {
-        if ((int)_minimumConsoleLevel <= (int)LogLevel.Warning)
+        var standardErrorMinimum = _options.MinimumStandardErrorLevel;
+
+        if (standardErrorMinimum is null)
         {
             configuration.AddRule(
                 ToNLogLevel(_minimumConsoleLevel),
-                NLogLevel.Warn,
+                NLogLevel.Fatal,
+                stdoutTarget);
+            return;
+        }
+
+        var stderrMinimum = (int)_minimumConsoleLevel > (int)standardErrorMinimum.Value
+            ? _minimumConsoleLevel
+            : standardErrorMinimum.Value;
+
+        var stdoutMaximumValue = (int)standardErrorMinimum.Value - 1;
+        if ((int)_minimumConsoleLevel <= stdoutMaximumValue)
+        {
+            configuration.AddRule(
+                ToNLogLevel(_minimumConsoleLevel),
+                ToNLogLevel((LogLevel)stdoutMaximumValue),
                 stdoutTarget);
         }
 
-        var stderrMinimum = (int)_minimumConsoleLevel > (int)LogLevel.Error
-            ? ToNLogLevel(_minimumConsoleLevel)
-            : NLogLevel.Error;
-
-        configuration.AddRule(stderrMinimum, NLogLevel.Fatal, stderrTarget);
+        configuration.AddRule(
+            ToNLogLevel(stderrMinimum),
+            NLogLevel.Fatal,
+            stderrTarget);
     }
 
     private Layout CreateLineLayout(

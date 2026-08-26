@@ -33,6 +33,7 @@ public sealed partial class Logger
 
     private readonly Action<PhysicalEmission>? _testObserver;
     private readonly bool _usesTestBackend;
+    private bool _consoleLoggingEnabled;
     private bool _testConsoleLoggingEnabled;
     private bool _testFileLoggingEnabled;
     private LogLevel _minimumConsoleLevel;

@@ -20,7 +20,9 @@ namespace MooreLib.Logging.Demo
                 TimestampFormat = "yyyy-MM-dd HH:mm:ss.fff",
                 TimestampZone = LogTimestampZone.Local,
                 MessageSeparator = " - ",
+                ConsoleLoggingEnabled = true,
                 MinimumConsoleLevel = LogLevel.Trace,
+                MinimumStandardErrorLevel = LogLevel.Error,
                 MinimumFileLevel = LogLevel.Trace,
                 InlineResumePrefix = "↳ ",
                 EntryIndentSize = 2,
@@ -43,12 +45,23 @@ namespace MooreLib.Logging.Demo
             RunCompleteWithChildDemo(log);
             RunInterruptionDemo(log);
             RunExceptionDemo(log);
+            RunConsoleDestinationDemo(log);
 
             await RunAsyncContextDemo(log);
             await RunConcurrentExplicitEntryDemo(log);
 
             log.WriteBlankLine();
             log.Info("MooreLib.Logger demo complete.");
+
+            static void RunConsoleDestinationDemo(Logger log)
+            {
+                log.Info("Console destination control");
+                log.DisableConsoleLogging();
+                log.Info("This line is written to the file only.");
+                log.EnableConsoleLogging();
+                log.Info("Console logging re-enabled.");
+                log.WriteBlankLine();
+            }
 
             static void RunOneShotDemo(Logger log)
             {

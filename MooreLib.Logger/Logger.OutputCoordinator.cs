@@ -108,7 +108,7 @@ public sealed partial class Logger
     }
 
     private bool IsConsoleDestinationEnabledLocked() =>
-        _usesTestBackend ? _testConsoleLoggingEnabled : true;
+        _usesTestBackend ? _testConsoleLoggingEnabled : _consoleLoggingEnabled;
 
     private bool IsFileDestinationEnabledLocked() =>
         _usesTestBackend ? _testFileLoggingEnabled : _fileTarget is not null;

@@ -471,6 +471,18 @@ public sealed class LoggerTests
     }
 
     [Fact]
+    public void InvalidStandardErrorLevelFailsDuringConstruction()
+    {
+        var events = new List<Logger.PhysicalEmission>();
+        Assert.Throws<ArgumentOutOfRangeException>(() => CreateLogger(events, new LoggerOptions
+        {
+            MinimumStandardErrorLevel = (LogLevel)999,
+            IncludeConsoleTimestamp = false,
+            IncludeConsoleLogLevel = false
+        }));
+    }
+
+    [Fact]
     public void EmptyTreeMarkersDoNotGainTrailingSpacesAndBlankCompletionUsesClosureMarker()
     {
         var events = new List<Logger.PhysicalEmission>();
@@ -1066,6 +1078,278 @@ public sealed class LoggerTests
     }
 
     [Fact]
+    public void ConsoleCanStartDisabledAndBeEnabledProspectively()
+    {
+        var events = new List<Logger.PhysicalEmission>();
+        using var log = CreateLogger(events, new LoggerOptions
+        {
+            ConsoleLoggingEnabled = false,
+            MinimumConsoleLevel = LogLevel.Trace,
+            IncludeConsoleTimestamp = false,
+            IncludeConsoleLogLevel = false
+        });
+
+        log.Info("suppressed");
+        Assert.Empty(events);
+
+        log.EnableConsoleLogging();
+        log.Info("visible");
+
+        var emission = Assert.Single(events);
+        Assert.Equal("visible", emission.Message);
+        Assert.True(emission.ConsoleVisible);
+    }
+
+    [Fact]
+    public void ConsoleCanBeDisabledWhileFileRemainsVisible()
+    {
+        var events = new List<Logger.PhysicalEmission>();
+        using var log = CreateLogger(events, new LoggerOptions
+        {
+            MinimumConsoleLevel = LogLevel.Trace,
+            MinimumFileLevel = LogLevel.Trace,
+            IncludeConsoleTimestamp = false,
+            IncludeConsoleLogLevel = false
+        });
+
+        log.SetTestFileLoggingEnabled(true);
+        log.DisableConsoleLogging();
+        log.Info("file only");
+
+        var emission = Assert.Single(events);
+        Assert.False(emission.ConsoleVisible);
+        Assert.True(emission.FileVisible);
+    }
+
+    [Fact]
+    public void EnablingConsoleMidEntryDoesNotReplaySuppressedContent()
+    {
+        var events = new List<Logger.PhysicalEmission>();
+        using var log = CreateLogger(events, new LoggerOptions
+        {
+            ConsoleLoggingEnabled = false,
+            MinimumConsoleLevel = LogLevel.Trace,
+            IncludeConsoleTimestamp = false,
+            IncludeConsoleLogLevel = false
+        });
+
+        using var entry = log.BeginInlineInfo("Hidden begin - ");
+        log.Write("Hidden progress ");
+        Assert.Empty(events);
+
+        log.EnableConsoleLogging();
+        log.Write("Future");
+        log.CompleteEntry();
+
+        Assert.DoesNotContain(events, e => e.Message.Contains("Hidden", StringComparison.Ordinal));
+        Assert.Contains(events, e => e.Message.Contains("Future", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void DisablingConsoleInterruptsOpenInlineLineBeforeFileOnlyContinuation()
+    {
+        var events = new List<Logger.PhysicalEmission>();
+        using var log = CreateLogger(events, new LoggerOptions
+        {
+            MinimumConsoleLevel = LogLevel.Trace,
+            MinimumFileLevel = LogLevel.Trace,
+            IncludeConsoleTimestamp = false,
+            IncludeConsoleLogLevel = false
+        });
+
+        log.SetTestFileLoggingEnabled(true);
+        using var entry = log.BeginInlineInfo("Working - ");
+        log.Write("25% ");
+        log.DisableConsoleLogging();
+        log.Write("50%");
+        log.CompleteEntry();
+
+        var breakEvent = Assert.Single(events.Where(e => e.Kind == Logger.PhysicalOutputKind.ForcedLineBreak));
+        Assert.True(breakEvent.ConsoleVisible);
+        Assert.True(breakEvent.FileVisible);
+        Assert.Contains(events, e => e.Message.Contains("↳ 50%", StringComparison.Ordinal) && !e.ConsoleVisible && e.FileVisible);
+    }
+
+    [Fact]
+    public void StandardErrorThresholdDefaultsToError()
+    {
+        var originalOut = Console.Out;
+        var originalError = Console.Error;
+        using var stdout = new StringWriter();
+        using var stderr = new StringWriter();
+
+        try
+        {
+            Console.SetOut(stdout);
+            Console.SetError(stderr);
+            using var log = new Logger(new LoggerOptions
+            {
+                MinimumConsoleLevel = LogLevel.Trace,
+                IncludeConsoleTimestamp = false,
+                IncludeConsoleLogLevel = false
+            });
+
+            log.Warn("WARN ROUTE");
+            log.Error("ERROR ROUTE");
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+            Console.SetError(originalError);
+        }
+
+        Assert.Contains("WARN ROUTE", stdout.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("ERROR ROUTE", stdout.ToString(), StringComparison.Ordinal);
+        Assert.Contains("ERROR ROUTE", stderr.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("WARN ROUTE", stderr.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void StandardErrorThresholdCanRouteWarningsAndAboveToStandardError()
+    {
+        var originalOut = Console.Out;
+        var originalError = Console.Error;
+        using var stdout = new StringWriter();
+        using var stderr = new StringWriter();
+
+        try
+        {
+            Console.SetOut(stdout);
+            Console.SetError(stderr);
+            using var log = new Logger(new LoggerOptions
+            {
+                MinimumConsoleLevel = LogLevel.Trace,
+                MinimumStandardErrorLevel = LogLevel.Warning,
+                IncludeConsoleTimestamp = false,
+                IncludeConsoleLogLevel = false
+            });
+
+            log.Info("INFO ROUTE");
+            log.Warn("WARN ROUTE");
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+            Console.SetError(originalError);
+        }
+
+        Assert.Contains("INFO ROUTE", stdout.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("WARN ROUTE", stdout.ToString(), StringComparison.Ordinal);
+        Assert.Contains("WARN ROUTE", stderr.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void NullStandardErrorThresholdRoutesAllConsoleOutputToStandardOutput()
+    {
+        var originalOut = Console.Out;
+        var originalError = Console.Error;
+        using var stdout = new StringWriter();
+        using var stderr = new StringWriter();
+
+        try
+        {
+            Console.SetOut(stdout);
+            Console.SetError(stderr);
+            using var log = new Logger(new LoggerOptions
+            {
+                MinimumConsoleLevel = LogLevel.Trace,
+                MinimumStandardErrorLevel = null,
+                IncludeConsoleTimestamp = false,
+                IncludeConsoleLogLevel = false
+            });
+
+            log.Error("ERROR TO STDOUT");
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+            Console.SetError(originalError);
+        }
+
+        Assert.Contains("ERROR TO STDOUT", stdout.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("ERROR TO STDOUT", stderr.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RealLoggerCanRunFileOnlyWithConsoleDisabledFromConstruction()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "MooreLib.Logger.Tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var path = Path.Combine(root, "Application.log");
+        var originalOut = Console.Out;
+        var originalError = Console.Error;
+        using var stdout = new StringWriter();
+        using var stderr = new StringWriter();
+
+        try
+        {
+            Console.SetOut(stdout);
+            Console.SetError(stderr);
+
+            using (var log = new Logger(new LoggerOptions
+            {
+                ConsoleLoggingEnabled = false,
+                MinimumFileLevel = LogLevel.Trace,
+                IncludeFileTimestamp = false,
+                IncludeFileLogLevel = false,
+                IncludeFileEntryMetadata = false
+            }))
+            {
+                log.EnableFileLogging(path);
+                log.Info("FILE ONLY");
+                log.DisableFileLogging();
+            }
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+            Console.SetError(originalError);
+        }
+
+        try
+        {
+            Assert.Equal(string.Empty, stdout.ToString());
+            Assert.Equal(string.Empty, stderr.ToString());
+            Assert.Contains("FILE ONLY", File.ReadAllText(path), StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void FailedConsoleDisableRetainsWorkingConsoleConfiguration()
+    {
+        var originalOut = Console.Out;
+        using var stdout = new StringWriter();
+
+        try
+        {
+            Console.SetOut(stdout);
+            using var log = new Logger(new LoggerOptions
+            {
+                MinimumConsoleLevel = LogLevel.Trace,
+                MinimumStandardErrorLevel = null,
+                IncludeConsoleTimestamp = false,
+                IncludeConsoleLogLevel = false
+            });
+
+            log.SetTestConfigurationApplyHook(_ => throw new InvalidOperationException("Injected console-disable failure."));
+            Assert.Throws<InvalidOperationException>(() => log.DisableConsoleLogging());
+
+            log.SetTestConfigurationApplyHook(null);
+            log.Info("CONSOLE STILL ACTIVE");
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+        }
+
+        Assert.Contains("CONSOLE STILL ACTIVE", stdout.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void FailedFileEnableKeepsConsoleOnlyStateAndCanBeRetried()
     {
         var root = Path.Combine(Path.GetTempPath(), "MooreLib.Logger.Tests", Guid.NewGuid().ToString("N"));
@@ -1138,13 +1422,8 @@ public sealed class LoggerTests
     [Fact]
     public void FailedFileSwitchRetainsOldDestinationAndCanLaterSwitch()
     {
-        var root = Path.Combine(
-            Path.GetTempPath(),
-            "MooreLib.Logger.Tests",
-            Guid.NewGuid().ToString("N"));
-
+        var root = Path.Combine(Path.GetTempPath(), "MooreLib.Logger.Tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
-
         var pathA = Path.Combine(root, "A.log");
         var pathB = Path.Combine(root, "B.log");
 
@@ -1158,49 +1437,27 @@ public sealed class LoggerTests
                 IncludeFileLogLevel = false,
                 IncludeFileEntryMetadata = false
             });
-
             log.EnableFileLogging(pathA);
-
             var normalizedB = Path.GetFullPath(pathB);
-
             log.SetTestConfigurationApplyHook(candidate =>
             {
-                if (candidate is not null &&
-                    Path.GetFullPath(candidate) == normalizedB)
-                {
-                    throw new InvalidOperationException(
-                        "Injected switch failure.");
-                }
+                if (candidate is not null && Path.GetFullPath(candidate) == normalizedB)
+                    throw new InvalidOperationException("Injected switch failure.");
             });
 
-            Assert.Throws<InvalidOperationException>(
-                () => log.EnableFileLogging(pathB));
+            Assert.Throws<InvalidOperationException>(() => log.EnableFileLogging(pathB));
 
-            // The failed switch must leave A as the working destination.
             log.Info("OLD DESTINATION STILL ACTIVE");
 
-            // Remove the injected failure and successfully switch to B.
-            // This releases A before we inspect it.
             log.SetTestConfigurationApplyHook(null);
             log.EnableFileLogging(pathB);
 
-            Assert.Contains(
-                "OLD DESTINATION STILL ACTIVE",
-                File.ReadAllText(pathA),
-                StringComparison.Ordinal);
-
+            Assert.Contains("OLD DESTINATION STILL ACTIVE", File.ReadAllText(pathA), StringComparison.Ordinal);
             log.Info("NEW DESTINATION ACTIVE");
             log.DisableFileLogging();
 
-            Assert.Contains(
-                "NEW DESTINATION ACTIVE",
-                File.ReadAllText(pathB),
-                StringComparison.Ordinal);
-
-            Assert.DoesNotContain(
-                "NEW DESTINATION ACTIVE",
-                File.ReadAllText(pathA),
-                StringComparison.Ordinal);
+            Assert.Contains("NEW DESTINATION ACTIVE", File.ReadAllText(pathB), StringComparison.Ordinal);
+            Assert.DoesNotContain("NEW DESTINATION ACTIVE", File.ReadAllText(pathA), StringComparison.Ordinal);
         }
         finally
         {

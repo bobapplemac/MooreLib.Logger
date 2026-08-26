@@ -27,8 +27,17 @@ public sealed record LoggerOptions
     /// <summary>NLog logger name used by this wrapper instance.</summary>
     public string LoggerName { get; init; } = "MooreLib.Logger";
 
-    /// <summary>Minimum severity emitted to the console. The stdout/stderr split remains Warning-and-below versus Error-and-above.</summary>
+    /// <summary>Whether console logging is enabled when the logger is constructed.</summary>
+    public bool ConsoleLoggingEnabled { get; init; } = true;
+
+    /// <summary>Minimum severity emitted to the console when console logging is enabled.</summary>
     public LogLevel MinimumConsoleLevel { get; init; } = LogLevel.Debug;
+
+    /// <summary>
+    /// Minimum console severity routed to standard error. Lower visible console severities are routed to standard output.
+    /// Set to <see langword="null"/> to route all console output to standard output.
+    /// </summary>
+    public LogLevel? MinimumStandardErrorLevel { get; init; } = LogLevel.Error;
 
     /// <summary>Minimum severity emitted to the optional file target.</summary>
     public LogLevel MinimumFileLevel { get; init; } = LogLevel.Debug;

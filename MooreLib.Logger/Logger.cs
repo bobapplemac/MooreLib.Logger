@@ -3,7 +3,7 @@
 //
 // ------------------------------------------------------------------------------------------
 // File:        Logger.cs
-// Revision:    r18
+// Revision:    r19
 // Modified:    2026-08-26
 // Author:      Andrew J. Moore
 // License:     MIT License
@@ -14,9 +14,9 @@
 //              ambient context, structured properties, and deterministic entry handles while
 //              NLog remains responsible for physical targets and file/archive mechanics.
 //
-//              Revision r18 removes process-local destination ownership enforcement and related registry
-//              machinery. MooreLib now coordinates only its own Logger instance state and delegates external
-//              console/file sharing behavior to the application, NLog, and operating system.
+//              Revision r19 adds independently configurable console destination state plus configurable
+//              stdout/stderr severity routing while preserving the existing coordinated physical-stream
+//              semantics and transactional NLog reconfiguration model.
 // ------------------------------------------------------------------------------------------
 
 #nullable enable
@@ -49,15 +49,16 @@ public sealed partial class Logger : IDisposable
 
     private readonly LoggerOptions _options;
 
-    /// <summary>Initializes a logger that immediately configures console logging; file logging remains disabled until enabled explicitly.</summary>
+    /// <summary>Initializes a logger using the configured initial console state; file logging remains disabled until enabled explicitly.</summary>
     /// <param name="options">Logger configuration, or <see langword="null"/> to use defaults.</param>
     public Logger(LoggerOptions? options = null)
     {
         _testObserver = null;
         _usesTestBackend = false;
-        _testConsoleLoggingEnabled = true;
-        _testFileLoggingEnabled = false;
         _options = ValidateAndCopyOptions(options ?? new LoggerOptions());
+        _consoleLoggingEnabled = _options.ConsoleLoggingEnabled;
+        _testConsoleLoggingEnabled = _options.ConsoleLoggingEnabled;
+        _testFileLoggingEnabled = false;
         _minimumConsoleLevel = _options.MinimumConsoleLevel;
         _minimumFileLevel = _options.MinimumFileLevel;
         _logFactory = new NLogFactory
@@ -83,9 +84,10 @@ public sealed partial class Logger : IDisposable
     {
         _testObserver = testObserver ?? throw new ArgumentNullException(nameof(testObserver));
         _usesTestBackend = true;
-        _testConsoleLoggingEnabled = true;
-        _testFileLoggingEnabled = false;
         _options = ValidateAndCopyOptions(options ?? new LoggerOptions());
+        _consoleLoggingEnabled = _options.ConsoleLoggingEnabled;
+        _testConsoleLoggingEnabled = _options.ConsoleLoggingEnabled;
+        _testFileLoggingEnabled = false;
         _minimumConsoleLevel = _options.MinimumConsoleLevel;
         _minimumFileLevel = _options.MinimumFileLevel;
         _logFactory = new NLogFactory
@@ -288,6 +290,8 @@ public sealed partial class Logger : IDisposable
 
         if (!Enum.IsDefined(options.MinimumConsoleLevel))
             throw new ArgumentOutOfRangeException(nameof(options.MinimumConsoleLevel));
+        if (options.MinimumStandardErrorLevel is LogLevel standardErrorLevel && !Enum.IsDefined(standardErrorLevel))
+            throw new ArgumentOutOfRangeException(nameof(options.MinimumStandardErrorLevel));
         if (!Enum.IsDefined(options.MinimumFileLevel))
             throw new ArgumentOutOfRangeException(nameof(options.MinimumFileLevel));
         if (!Enum.IsDefined(options.TimestampZone))

@@ -31,7 +31,7 @@ public sealed partial class Logger
             }
 
             // Prepare first without mutating active MooreLib/NLog state.
-            var prepared = PrepareConfigurationLocked(normalized);
+            var prepared = PrepareConfigurationLocked(normalized, _consoleLoggingEnabled);
 
             CloseOpenPhysicalLineLocked(markInterrupted: true);
             _logFactory.Flush(_options.DisposeFlushTimeout);
@@ -40,9 +40,9 @@ public sealed partial class Logger
         }
     }
 
-    /// <summary>Disables file logging while preserving console logging and allowing interrupted logical entries to resume later.</summary>
+    /// <summary>Disables file logging while preserving the current console destination state and allowing interrupted logical entries to resume later.</summary>
     /// <remarks>
-    /// Console-only configuration is applied successfully before MooreLib commits the disabled file state.
+    /// A configuration without the file target is applied successfully before MooreLib commits the disabled file state.
     /// A failed disable therefore leaves the previous file configuration active.
     /// </remarks>
     public void DisableFileLogging()
@@ -57,7 +57,7 @@ public sealed partial class Logger
                 return;
             }
 
-            var prepared = PrepareConfigurationLocked(filePath: null);
+            var prepared = PrepareConfigurationLocked(filePath: null, consoleLoggingEnabled: _consoleLoggingEnabled);
 
             CloseOpenPhysicalLineLocked(markInterrupted: true);
             _logFactory.Flush(_options.DisposeFlushTimeout);

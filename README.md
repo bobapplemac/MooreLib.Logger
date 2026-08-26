@@ -25,9 +25,9 @@ which can render as a single progressively written physical line:
 2026-08-25 19:00:00 [INFO] - Connecting to PLC - CONNECTED - PROGRAM: Main - SUCCESS
 ```
 
-The same physical fragments are written immediately to both console and file destinations. MooreLib.Logger is therefore useful when converting console-oriented applications to persistent logging without giving up natural `Write(...)` / `WriteLine(...)` style progress output.
+The same physical fragments are written immediately to each enabled destination. Console and file output can be enabled independently, so MooreLib.Logger is useful for interactive applications, file-only services, or applications that want both without giving up natural `Write(...)` / `WriteLine(...)` style progress output.
 
-> **Current source version:** 1.18.0 (revision r18)  
+> **Current source version:** 1.19.0 (revision r19)  
 > **Target framework:** .NET 8  
 > **Logging backend:** NLog 6.2  
 > **Public namespace:** `MooreLib.Logging`  
@@ -47,6 +47,7 @@ The same physical fragments are written immediately to both console and file des
 - [Inline interruption and resume](#inline-interruption-and-resume)
 - [Blank physical lines](#blank-physical-lines)
 - [Multiline message semantics](#multiline-message-semantics)
+- [Console logging](#console-logging)
 - [File logging](#file-logging)
 - [File rollover and retention](#file-rollover-and-retention)
 - [Filtering and routing](#filtering-and-routing)
@@ -97,7 +98,8 @@ MooreLib.Logger adds a semantic layer above NLog for this use case. It provides:
 - structured `LogProperty` metadata and inheritance;
 - exception-aware multi-line rendering while preserving the actual `Exception` object in NLog;
 - independently configurable console and file severity thresholds;
-- dynamically enabled/disabled file logging;
+- independently enabled/disabled console and file destinations;
+- configurable stdout/stderr severity routing;
 - live partial-line file output;
 - safe-boundary file rollover that avoids splitting a physical line across archive files.
 
@@ -156,7 +158,9 @@ using var Log = new Logger(new LoggerOptions
     TimestampFormat = "yyyy-MM-dd HH:mm:ss",
     TimestampZone = LogTimestampZone.Local,
     MessageSeparator = " - ",
+    ConsoleLoggingEnabled = true,
     MinimumConsoleLevel = LogLevel.Debug,
+    MinimumStandardErrorLevel = LogLevel.Error,
     MinimumFileLevel = LogLevel.Trace,
     ArchivePolicy = new FileArchivePolicy.BySize(
         MaximumFileSizeBytes: 10 * 1024 * 1024,
@@ -635,15 +639,52 @@ Equivalent CR and CRLF sequences behave the same way.
 
 ---
 
+# Console logging
+
+Console logging is enabled by default and may be disabled at construction time for file-only or otherwise non-interactive applications:
+
+```csharp
+using var Log = new Logger(new LoggerOptions
+{
+    ConsoleLoggingEnabled = false
+});
+
+Log.EnableFileLogging("Application.log");
+```
+
+It can also be enabled or disabled dynamically:
+
+```csharp
+Log.DisableConsoleLogging();
+// Future eligible output goes only to other enabled destinations.
+
+Log.EnableConsoleLogging();
+// Future eligible output is visible on the console again.
+```
+
+Console destination changes are prospective. Previously suppressed content is not replayed. If an inline physical line is open when the console state changes, MooreLib safely terminates that line against the old destination set so future output can resume cleanly under the new destination set.
+
+Standard output versus standard error routing is controlled by `MinimumStandardErrorLevel`. The default is `LogLevel.Error`, preserving the conventional MooreLib behavior of `Trace` through `Warning` on stdout and `Error` / `Fatal` on stderr.
+
+```csharp
+MinimumStandardErrorLevel = LogLevel.Warning; // Warning and above -> stderr
+MinimumStandardErrorLevel = LogLevel.Trace;   // all visible console output -> stderr
+MinimumStandardErrorLevel = null;             // all visible console output -> stdout
+```
+
+The stdout/stderr threshold is applied after `MinimumConsoleLevel`; filtered console events are not emitted to either stream.
+
+---
+
 # File logging
 
-Console logging is configured when the logger is constructed. File logging is optional and may be enabled later:
+File logging is optional and may be enabled independently of the console:
 
 ```csharp
 Log.EnableFileLogging("Application.log");
 ```
 
-It may be disabled while the logger continues writing to the console:
+It may be disabled while any currently enabled console destination continues independently:
 
 ```csharp
 Log.DisableFileLogging();
@@ -765,10 +806,13 @@ MinimumFileLevel = LogLevel.Trace,
 
 This allows, for example, concise interactive console output while retaining detailed diagnostics in the file.
 
-Console routing is split by severity:
+Console routing uses two thresholds:
 
-- `Trace` through `Warning` -> standard output, subject to `MinimumConsoleLevel`;
-- `Error` and `Fatal` -> standard error, subject to `MinimumConsoleLevel`.
+- events below `MinimumConsoleLevel` are suppressed from the console;
+- visible events below `MinimumStandardErrorLevel` go to standard output;
+- visible events at or above `MinimumStandardErrorLevel` go to standard error.
+
+`MinimumStandardErrorLevel = null` routes all visible console output to standard output.
 
 File events are emitted when they meet `MinimumFileLevel`.
 
@@ -783,7 +827,9 @@ A suppressed event that is invisible to **all enabled destinations** has no phys
 | Option | Default | Description |
 |---|---:|---|
 | `LoggerName` | `"MooreLib.Logger"` | NLog logger name used by this instance. |
+| `ConsoleLoggingEnabled` | `true` | Initial console destination state. May later be changed with `EnableConsoleLogging()` / `DisableConsoleLogging()`. |
 | `MinimumConsoleLevel` | `Debug` | Minimum severity emitted to the console. |
+| `MinimumStandardErrorLevel` | `Error` | Minimum visible console severity routed to stderr. Lower visible levels go to stdout; `null` routes all console output to stdout. |
 | `MinimumFileLevel` | `Debug` | Minimum severity emitted to the optional file target. |
 | `IncludeConsoleTimestamp` | `false` | Include timestamps in generated console headers. |
 | `IncludeConsoleLogLevel` | `true` | Include severity labels in generated console headers. |
@@ -999,9 +1045,12 @@ CompleteEntryInline(message, ...)
 CompleteEntryInline(entry, message, ...)
 ```
 
-## File destination
+## Destinations
 
 ```csharp
+EnableConsoleLogging()
+DisableConsoleLogging()
+
 EnableFileLogging(path)
 DisableFileLogging()
 ```
@@ -1225,6 +1274,7 @@ MooreLib.Logger uses a simple `Major.Revision.0` versioning scheme.
 1.16.0  -> revision r16
 1.17.0  -> revision r17
 1.18.0  -> revision r18
+1.19.0  -> revision r19
 ```
 
 The **revision** component is globally monotonic and increments for every released code change, including small fixes. The patch component is reserved and currently remains `0`.
@@ -1255,7 +1305,7 @@ SPDX-License-Identifier: MIT
 
 # Status
 
-Version **1.18.0** corresponds to **r18**. The architecture remains substantially complete for its intended purpose: NLog-backed application logging with logical entries, structured properties, ancestry-aware nested tree rendering, and console-style progressive output. r18 removes the former `DestinationOwnershipRegistry` and related process-local ownership machinery, leaving each `Logger` responsible only for its own coordinated physical stream and transactional NLog configuration. External console/file sharing is intentionally delegated to the application, NLog, and operating system. The r17 `LogEntry` object-identity model and GUID `InstanceId` plus `EntrySequence` / `ParentEntrySequence` structured correlation remain unchanged. Real application usage should drive future revisions rather than speculative feature expansion.
+Version **1.19.0** corresponds to **r19**. The architecture remains substantially complete for its intended purpose: NLog-backed application logging with logical entries, structured properties, ancestry-aware nested tree rendering, and console-style progressive output. r19 makes the console an independently configurable destination: it may start disabled, can be enabled or disabled dynamically, and can route visible severities between stdout and stderr using `MinimumStandardErrorLevel`. Destination changes remain prospective and preserve the coordinated physical-stream semantics established by earlier revisions. The r18 simplified destination model and r17 `LogEntry` object-identity/correlation model remain unchanged.
 
 Future changes should favor:
 
