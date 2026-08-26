@@ -11,8 +11,9 @@ namespace MooreLib.Logging;
 public sealed partial class Logger
 {
     internal const string ReservedPropertyPrefix = "MooreLib.Logger.";
-    internal const string EntryIdPropertyName = ReservedPropertyPrefix + "EntryId";
-    internal const string ParentEntryIdPropertyName = ReservedPropertyPrefix + "ParentEntryId";
+    internal const string InstanceIdPropertyName = ReservedPropertyPrefix + "InstanceId";
+    internal const string EntrySequencePropertyName = ReservedPropertyPrefix + "EntrySequence";
+    internal const string ParentEntrySequencePropertyName = ReservedPropertyPrefix + "ParentEntrySequence";
     internal const string EntryTypePropertyName = ReservedPropertyPrefix + "EntryType";
     internal const string EntryDepthPropertyName = ReservedPropertyPrefix + "EntryDepth";
 
@@ -23,7 +24,8 @@ public sealed partial class Logger
         string Message,
         PhysicalOutputKind Kind,
         string Prefix,
-        long? EntryId,
+        Guid? InstanceId,
+        long? EntrySequence,
         Exception? Exception,
         IReadOnlyDictionary<string, object?> Properties,
         bool ConsoleVisible,
@@ -37,12 +39,11 @@ public sealed partial class Logger
     private LogLevel _minimumFileLevel;
     private Action? _testFlushHook;
     private Action<string?>? _testConfigurationApplyHook;
-    private readonly Dictionary<long, EntryRecord> _activeEntries = new();
+    private readonly HashSet<LogEntry> _activeEntries = new(ReferenceEqualityComparer.Instance);
     private readonly AsyncLocal<EntryContext?> _currentEntry = new();
 
-    private long _nextEntryId;
-    private long? _openPhysicalEntryId;
-    private LogLevel _openPhysicalEntryLevel;
+    private long _nextEntrySequence;
+    private LogEntry? _openPhysicalEntry;
     private LoggerLifecycleState _lifecycleState = LoggerLifecycleState.Active;
 
     internal enum EntryLifecycleState
@@ -91,47 +92,15 @@ public sealed partial class Logger
         ForcedLineBreak
     }
 
-    internal sealed class EntryRecord
-    {
-        public EntryRecord(
-            long id,
-            EntryRecord? parent,
-            LogLevel level,
-            LogProperty[] properties)
-        {
-            Id = id;
-            Parent = parent;
-            ParentEntryId = parent?.Id;
-            Level = level;
-            Properties = properties;
-            Depth = parent is null ? 0 : checked(parent.Depth + 1);
-            State = EntryLifecycleState.ActiveLineClosed;
-        }
-
-        public long Id { get; }
-        public EntryRecord? Parent { get; }
-        public long? ParentEntryId { get; }
-        public LogLevel Level { get; }
-        public LogProperty[] Properties { get; }
-        public int Depth { get; }
-        public EntryLifecycleState State { get; set; }
-        public bool HasVisibleTreeContent { get; set; }
-
-        public bool IsActive => State != EntryLifecycleState.Completed;
-        public bool OwnsOpenLine => State is EntryLifecycleState.ActiveLineOpen or EntryLifecycleState.CompletingLineOpen;
-        public bool NeedsResume => State is EntryLifecycleState.ActiveInterrupted or EntryLifecycleState.CompletingInterrupted;
-        public bool IsCompleting => State is EntryLifecycleState.CompletingLinePending or EntryLifecycleState.CompletingLineOpen or EntryLifecycleState.CompletingInterrupted;
-    }
-
     internal sealed class EntryContext
     {
-        public EntryContext(EntryRecord entry, EntryContext? parent)
+        public EntryContext(LogEntry entry, EntryContext? parent)
         {
             Entry = entry;
             Parent = parent;
         }
 
-        public EntryRecord Entry { get; }
+        public LogEntry Entry { get; }
         public EntryContext? Parent { get; }
     }
 

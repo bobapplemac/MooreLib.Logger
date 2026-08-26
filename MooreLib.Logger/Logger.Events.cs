@@ -175,7 +175,7 @@ public sealed partial class Logger
     /// <param name="message">Child message text.</param>
     /// <param name="properties">Structured properties merged over inherited parent properties.</param>
     public void WriteEvent(LogEntry parentEntry, LogLevel level, string message, params LogProperty[] properties) =>
-        WriteAttachedEventCore(GetEntryId(parentEntry), level, message, exception: null, properties, completeParent: false);
+        WriteAttachedEventCore(parentEntry, level, message, exception: null, properties, completeParent: false);
 
     /// <summary>Writes a one-shot nested child with an attached exception beneath the supplied active parent.</summary>
     /// <param name="parentEntry">Active parent entry handle.</param>
@@ -186,7 +186,7 @@ public sealed partial class Logger
     public void WriteEvent(LogEntry parentEntry, LogLevel level, string message, Exception exception, params LogProperty[] properties)
     {
         ArgumentNullException.ThrowIfNull(exception);
-        WriteAttachedEventCore(GetEntryId(parentEntry), level, message, exception, properties, completeParent: false);
+        WriteAttachedEventCore(parentEntry, level, message, exception, properties, completeParent: false);
     }
 
     /// <summary>Writes exactly one unformatted blank physical line to every enabled destination.</summary>

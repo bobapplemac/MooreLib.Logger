@@ -12,14 +12,12 @@ public sealed partial class Logger
 {
     private bool EmitPhysicalLocked(
         PhysicalEvent logEvent,
-        EntryRecord? entry,
+        LogEntry? entry,
         LogLevel level,
         bool bypassSeverityFiltering = false)
     {
         ThrowIfNotActiveLocked();
 
-        // A completely filtered event is a physical no-op. Logical entry state may still exist,
-        // but invisible output must never interrupt or claim the shared physical stream.
         if (!IsVisibleAtAnyDestinationLocked(level, bypassSeverityFiltering))
         {
             return false;
@@ -28,12 +26,12 @@ public sealed partial class Logger
         AssertEmissionInvariantLocked(logEvent, entry);
 
         var continuesOpenLine =
-            _openPhysicalEntryId.HasValue &&
+            _openPhysicalEntry is not null &&
             entry is not null &&
-            _openPhysicalEntryId.Value == entry.Id &&
+            ReferenceEquals(_openPhysicalEntry, entry) &&
             logEvent.OutputKind is PhysicalOutputKind.Fragment or PhysicalOutputKind.FragmentLineEnd;
 
-        if (_openPhysicalEntryId.HasValue && !continuesOpenLine)
+        if (_openPhysicalEntry is not null && !continuesOpenLine)
         {
             CloseOpenPhysicalLineLocked(markInterrupted: true);
         }
@@ -56,55 +54,55 @@ public sealed partial class Logger
                 throw new InvalidOperationException("An open physical line must belong to a logical entry.");
             }
 
-            if (_openPhysicalEntryId.HasValue)
+            if (_openPhysicalEntry is not null)
             {
                 throw new InvalidOperationException("A second logical entry cannot claim an already-open physical line.");
             }
 
-            _openPhysicalEntryId = entry.Id;
-            _openPhysicalEntryLevel = entry.Level;
+            _openPhysicalEntry = entry;
         }
         else if (logEvent.OutputKind == PhysicalOutputKind.FragmentLineEnd)
         {
-            if (_openPhysicalEntryId != entry?.Id)
+            if (!ReferenceEquals(_openPhysicalEntry, entry))
             {
                 throw new InvalidOperationException("Cannot end a raw physical fragment line without owning it.");
             }
 
-            _openPhysicalEntryId = null;
+            _openPhysicalEntry = null;
         }
 
         return true;
     }
 
-    private void AssertEmissionInvariantLocked(PhysicalEvent logEvent, EntryRecord? entry)
+    private void AssertEmissionInvariantLocked(PhysicalEvent logEvent, LogEntry? entry)
     {
         if (entry?.State == EntryLifecycleState.Completed)
         {
-            throw new InvalidOperationException($"Completed log entry {entry.Id} cannot emit physical output.");
+            throw new InvalidOperationException(
+                $"Completed log entry {entry.EntrySequence} cannot emit physical output.");
         }
 
         if (logEvent.OutputKind is PhysicalOutputKind.Fragment or PhysicalOutputKind.FragmentLineEnd)
         {
-            if (entry is null || _openPhysicalEntryId != entry.Id)
+            if (entry is null || !ReferenceEquals(_openPhysicalEntry, entry))
             {
                 throw new InvalidOperationException(
                     "Cannot emit a raw fragment without owning the currently open physical line.");
             }
         }
 
-        if (_openPhysicalEntryId.HasValue)
+        if (_openPhysicalEntry is not null)
         {
-            if (!_activeEntries.TryGetValue(_openPhysicalEntryId.Value, out var owner) || !owner.IsActive)
+            if (!_activeEntries.Contains(_openPhysicalEntry) || !_openPhysicalEntry.IsActive)
             {
                 throw new InvalidOperationException(
                     "The physical stream references an entry that is no longer active.");
             }
 
-            if (!owner.OwnsOpenLine)
+            if (!_openPhysicalEntry.OwnsOpenLine)
             {
                 throw new InvalidOperationException(
-                    $"Entry {owner.Id} owns the physical line but is in incompatible state {owner.State}.");
+                    $"Entry {_openPhysicalEntry.EntrySequence} owns the physical line but is in incompatible state {_openPhysicalEntry.State}.");
             }
         }
     }
@@ -143,7 +141,7 @@ public sealed partial class Logger
 
     private void DispatchPhysicalLocked(
         PhysicalEvent logEvent,
-        EntryRecord? entry,
+        LogEntry? entry,
         LogLevel level,
         bool startsNewPhysicalLine,
         bool bypassSeverityFiltering = false)
@@ -160,7 +158,8 @@ public sealed partial class Logger
                 logEvent.Message ?? string.Empty,
                 logEvent.OutputKind,
                 logEvent.PhysicalPrefix,
-                entry?.Id,
+                entry is null ? null : InstanceId,
+                entry?.EntrySequence,
                 logEvent.Exception,
                 capturedProperties,
                 IsConsoleVisibleLocked(level, bypassSeverityFiltering),
@@ -173,26 +172,26 @@ public sealed partial class Logger
 
     private void CloseOpenPhysicalLineLocked(bool markInterrupted)
     {
-        if (!_openPhysicalEntryId.HasValue)
+        var owner = _openPhysicalEntry;
+        if (owner is null)
         {
             return;
         }
 
-        var ownerId = _openPhysicalEntryId.Value;
-        if (!_activeEntries.TryGetValue(ownerId, out var owner) || !owner.IsActive)
+        if (!_activeEntries.Contains(owner) || !owner.IsActive)
         {
             throw new InvalidOperationException(
-                $"Cannot close the physical line because owning entry {ownerId} is not active.");
+                $"Cannot close the physical line because owning entry {owner.EntrySequence} is not active.");
         }
 
         if (!owner.OwnsOpenLine)
         {
             throw new InvalidOperationException(
-                $"Entry {ownerId} owns the physical line but is in incompatible state {owner.State}.");
+                $"Entry {owner.EntrySequence} owns the physical line but is in incompatible state {owner.State}.");
         }
 
         var lineBreak = CreatePhysicalEvent(
-            _openPhysicalEntryLevel,
+            owner.Level,
             string.Empty,
             null,
             PhysicalOutputKind.ForcedLineBreak);
@@ -201,8 +200,8 @@ public sealed partial class Logger
             lineBreak,
             owner,
             markInterrupted ? EntryEventType.Interrupted : EntryEventType.End);
-        DispatchPhysicalLocked(lineBreak, owner, _openPhysicalEntryLevel, startsNewPhysicalLine: false);
-        _openPhysicalEntryId = null;
+        DispatchPhysicalLocked(lineBreak, owner, owner.Level, startsNewPhysicalLine: false);
+        _openPhysicalEntry = null;
 
         owner.State = markInterrupted
             ? owner.State switch
@@ -210,7 +209,7 @@ public sealed partial class Logger
                 EntryLifecycleState.ActiveLineOpen => EntryLifecycleState.ActiveInterrupted,
                 EntryLifecycleState.CompletingLineOpen => EntryLifecycleState.CompletingInterrupted,
                 _ => throw new InvalidOperationException(
-                    $"Entry {owner.Id} cannot be interrupted from state {owner.State}.")
+                    $"Entry {owner.EntrySequence} cannot be interrupted from state {owner.State}.")
             }
             : owner.State switch
             {
@@ -220,33 +219,44 @@ public sealed partial class Logger
             };
     }
 
-    private void CompleteRecordLocked(EntryRecord entry)
+    private void CompleteRecordLocked(LogEntry entry)
     {
-        if (_openPhysicalEntryId == entry.Id)
+        if (ReferenceEquals(_openPhysicalEntry, entry))
         {
             CloseOpenPhysicalLineLocked(markInterrupted: false);
         }
 
         entry.State = EntryLifecycleState.Completed;
-        _activeEntries.Remove(entry.Id);
+        _activeEntries.Remove(entry);
 
         var current = _currentEntry.Value;
-        if (current?.Entry.Id == entry.Id)
+        if (current is not null && ReferenceEquals(current.Entry, entry))
         {
             _currentEntry.Value = GetFirstActiveContextLocked(current.Parent);
         }
     }
 
-    private EntryRecord ResolveExplicitEntryLocked(long entryId, string role)
+    private LogEntry ResolveExplicitEntryLocked(LogEntry entry, string role)
     {
-        if (!_activeEntries.TryGetValue(entryId, out var entry) || !entry.IsActive)
+        ArgumentNullException.ThrowIfNull(entry);
+
+        if (!entry.BelongsTo(this))
         {
-            throw new InvalidOperationException($"The specified {role} {entryId} is not active.");
+            throw new ArgumentException(
+                $"The specified {role} belongs to a different Logger instance.",
+                nameof(entry));
         }
+
+        if (!_activeEntries.Contains(entry) || !entry.IsActive)
+        {
+            throw new InvalidOperationException(
+                $"The specified {role} {entry.EntrySequence} is not active.");
+        }
+
         return entry;
     }
 
-    private EntryRecord? ResolveAmbientEntryLocked() => GetCurrentContextLocked()?.Entry;
+    private LogEntry? ResolveAmbientEntryLocked() => GetCurrentContextLocked()?.Entry;
 
     private EntryContext? GetCurrentContextLocked()
     {
@@ -262,7 +272,7 @@ public sealed partial class Logger
     {
         while (context is not null)
         {
-            if (_activeEntries.TryGetValue(context.Entry.Id, out var active) && active.IsActive)
+            if (_activeEntries.Contains(context.Entry) && context.Entry.IsActive)
             {
                 return context;
             }
@@ -271,17 +281,17 @@ public sealed partial class Logger
         return null;
     }
 
-    private static EntryContext? FindContext(EntryContext? context, long entryId)
+    private static EntryContext? FindContext(EntryContext? context, LogEntry entry)
     {
         while (context is not null)
         {
-            if (context.Entry.Id == entryId) return context;
+            if (ReferenceEquals(context.Entry, entry)) return context;
             context = context.Parent;
         }
         return null;
     }
 
-    private long NextEntryIdLocked() => checked(++_nextEntryId);
+    private long NextEntrySequenceLocked() => checked(++_nextEntrySequence);
 
     private PhysicalEvent CreatePhysicalEvent(
         LogLevel level,
@@ -343,15 +353,16 @@ public sealed partial class Logger
         foreach (var property in properties) logEvent.Properties[property.Name] = property.Value;
     }
 
-    private static void ApplyReservedEntryProperties(
+    private void ApplyReservedEntryProperties(
         NLog.LogEventInfo logEvent,
-        EntryRecord entry,
+        LogEntry entry,
         EntryEventType entryType)
     {
-        logEvent.Properties[EntryIdPropertyName] = entry.Id;
-        if (entry.ParentEntryId.HasValue)
+        logEvent.Properties[InstanceIdPropertyName] = InstanceId;
+        logEvent.Properties[EntrySequencePropertyName] = entry.EntrySequence;
+        if (entry.Parent is not null)
         {
-            logEvent.Properties[ParentEntryIdPropertyName] = entry.ParentEntryId.Value;
+            logEvent.Properties[ParentEntrySequencePropertyName] = entry.Parent.EntrySequence;
         }
         logEvent.Properties[EntryTypePropertyName] = entryType.ToString();
         logEvent.Properties[EntryDepthPropertyName] = entry.Depth;

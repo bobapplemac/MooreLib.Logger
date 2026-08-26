@@ -9,8 +9,9 @@ namespace MooreLib.Logging.Tests;
 
 public sealed class LoggerTests
 {
-    private const string EntryIdProperty = Logger.ReservedPropertyPrefix + "EntryId";
-    private const string ParentEntryIdProperty = Logger.ReservedPropertyPrefix + "ParentEntryId";
+    private const string InstanceIdProperty = Logger.ReservedPropertyPrefix + "InstanceId";
+    private const string EntrySequenceProperty = Logger.ReservedPropertyPrefix + "EntrySequence";
+    private const string ParentEntrySequenceProperty = Logger.ReservedPropertyPrefix + "ParentEntrySequence";
     private const string EntryTypeProperty = Logger.ReservedPropertyPrefix + "EntryType";
 
     private static Logger CreateLogger(List<Logger.PhysicalEmission> emissions) =>
@@ -169,7 +170,7 @@ public sealed class LoggerTests
         using var log = CreateLogger(events);
 
         Assert.Throws<ArgumentException>(() =>
-            log.Info("Message", new LogProperty(EntryIdProperty, 42)));
+            log.Info("Message", new LogProperty(EntrySequenceProperty, 42)));
     }
 
     [Fact]
@@ -192,8 +193,8 @@ public sealed class LoggerTests
         Assert.Equal("Production", emission.Properties["Environment"]);
         Assert.Equal("Child", emission.Properties["Shared"]);
         Assert.Equal(42, emission.Properties["Detail"]);
-        Assert.Equal(child.Id, emission.Properties[EntryIdProperty]);
-        Assert.Equal(parent.Id, emission.Properties[ParentEntryIdProperty]);
+        Assert.Equal(child.EntrySequence, emission.Properties[EntrySequenceProperty]);
+        Assert.Equal(parent.EntrySequence, emission.Properties[ParentEntrySequenceProperty]);
     }
 
     [Fact]
@@ -316,7 +317,7 @@ public sealed class LoggerTests
         log.CompleteEntry(hiddenParent);
 
         var child = Assert.Single(events.Where(e => e.Message.Contains("Visible child", StringComparison.Ordinal)));
-        Assert.Equal(hiddenParent.Id, child.Properties[ParentEntryIdProperty]);
+        Assert.Equal(hiddenParent.EntrySequence, child.Properties[ParentEntrySequenceProperty]);
     }
 
     [Fact]
@@ -397,10 +398,10 @@ public sealed class LoggerTests
         log.Info("Other");
 
         var interruption = Assert.Single(events.Where(e => e.Kind == Logger.PhysicalOutputKind.ForcedLineBreak));
-        Assert.Equal(entry.Id, interruption.EntryId);
+        Assert.Equal(entry.EntrySequence, interruption.EntrySequence);
         Assert.Equal(17, interruption.Properties["OperationId"]);
         Assert.Equal("Interrupted", interruption.Properties[EntryTypeProperty]);
-        Assert.Equal(entry.Id, interruption.Properties[EntryIdProperty]);
+        Assert.Equal(entry.EntrySequence, interruption.Properties[EntrySequenceProperty]);
     }
 
     [Fact]
@@ -510,7 +511,7 @@ public sealed class LoggerTests
         log.CompleteEntry("Done");
 
         var continuation = Assert.Single(events.Where(e => e.Message.Contains("Still parent", StringComparison.Ordinal)));
-        Assert.Equal(parent.Id, continuation.EntryId);
+        Assert.Equal(parent.EntrySequence, continuation.EntrySequence);
     }
 
     [Fact]
@@ -532,7 +533,7 @@ public sealed class LoggerTests
         log.CompleteEntry("Parent done");
 
         var parentContinuation = Assert.Single(events.Where(e => e.Message.Contains("Parent still current", StringComparison.Ordinal)));
-        Assert.Equal(parent.Id, parentContinuation.EntryId);
+        Assert.Equal(parent.EntrySequence, parentContinuation.EntrySequence);
     }
 
     [Fact]
@@ -1269,7 +1270,7 @@ public sealed class LoggerTests
         var emission = Assert.Single(
             events.Where(e => e.Message.Contains("Task work", StringComparison.Ordinal)));
 
-        Assert.Equal(parent.Id, emission.EntryId);
+        Assert.Equal(parent.EntrySequence, emission.EntrySequence);
     }
 
     [Fact]
@@ -1303,7 +1304,7 @@ public sealed class LoggerTests
         var emission = Assert.Single(
             events.Where(e => e.Message.Contains("Thread work", StringComparison.Ordinal)));
 
-        Assert.Equal(parent.Id, emission.EntryId);
+        Assert.Equal(parent.EntrySequence, emission.EntrySequence);
     }
 
     [Fact]
@@ -1334,8 +1335,8 @@ public sealed class LoggerTests
         var parentWork = Assert.Single(
             events.Where(e => e.Message.Contains("Parent work", StringComparison.Ordinal)));
 
-        Assert.NotEqual(parent.Id, detached.EntryId);
-        Assert.Equal(parent.Id, parentWork.EntryId);
+        Assert.NotEqual(parent.EntrySequence, detached.EntrySequence);
+        Assert.Equal(parent.EntrySequence, parentWork.EntrySequence);
     }
 
     [Fact]
@@ -1391,8 +1392,8 @@ public sealed class LoggerTests
         Assert.Equal(3, aEvents.Length);
         Assert.Equal(3, bEvents.Length);
 
-        Assert.All(aEvents, e => Assert.Equal(entryA.Id, e.EntryId));
-        Assert.All(bEvents, e => Assert.Equal(entryB.Id, e.EntryId));
+        Assert.All(aEvents, e => Assert.Equal(entryA.EntrySequence, e.EntrySequence));
+        Assert.All(bEvents, e => Assert.Equal(entryB.EntrySequence, e.EntrySequence));
     }
 
     [Fact]
@@ -1587,6 +1588,89 @@ public sealed class LoggerTests
         Assert.Same(exception, heading.Exception);
         Assert.Contains(events.Skip(1), e => e.Message.StartsWith("  ├ ", StringComparison.Ordinal));
         Assert.StartsWith("  └ ", events[^1].Message, StringComparison.Ordinal);
+    }
+
+
+
+    [Fact]
+    public void LogEntryIsTheInternalStateObjectAndCarriesDirectParentReference()
+    {
+        var events = new List<Logger.PhysicalEmission>();
+        using var log = CreateLogger(events);
+        using var parent = log.BeginInfo("Parent");
+        using var child = log.BeginWarn(parent, "Child");
+
+        Assert.Same(parent, child.Parent);
+        Assert.Equal(LogLevel.Warning, child.Level);
+        Assert.Equal(parent.Depth + 1, child.Depth);
+        Assert.True(child.IsActive);
+        Assert.Null(typeof(Logger).GetNestedType("EntryRecord", System.Reflection.BindingFlags.NonPublic));
+    }
+
+    [Fact]
+    public void EntrySequencesAreMonotonicWithinLoggerAndCarryInstanceScopedMetadata()
+    {
+        var events = new List<Logger.PhysicalEmission>();
+        using var log = CreateLogger(events);
+        using var parent = log.BeginInfo("Parent");
+        using var child = log.BeginInfo(parent, "Child");
+
+        log.WriteLine(child, "Work");
+
+        Assert.Equal(1, parent.EntrySequence);
+        Assert.Equal(2, child.EntrySequence);
+
+        var work = Assert.Single(events.Where(e => e.Message.Contains("Work", StringComparison.Ordinal)));
+        Assert.True(work.InstanceId.HasValue);
+        Assert.Equal(log.InstanceId, work.InstanceId.Value);
+        Assert.Equal(child.EntrySequence, work.EntrySequence);
+        Assert.Equal(log.InstanceId, Assert.IsType<Guid>(work.Properties[InstanceIdProperty]));
+        Assert.Equal(child.EntrySequence, Assert.IsType<long>(work.Properties[EntrySequenceProperty]));
+        Assert.Equal(parent.EntrySequence, Assert.IsType<long>(work.Properties[ParentEntrySequenceProperty]));
+    }
+
+
+    [Fact]
+    public async Task ConcurrentEntryCreationProducesUniqueMonotonicSequences()
+    {
+        var events = new List<Logger.PhysicalEmission>();
+        using var log = CreateLogger(events);
+        using var parent = log.BeginInfo("Parent");
+
+        var tasks = Enumerable.Range(0, 32)
+            .Select(index => Task.Run(() => log.BeginInfo(parent, $"Child {index}")))
+            .ToArray();
+
+        var children = await Task.WhenAll(tasks);
+        try
+        {
+            var sequences = children.Select(entry => entry.EntrySequence).OrderBy(value => value).ToArray();
+            Assert.Equal(Enumerable.Range(2, 32).Select(value => (long)value).ToArray(), sequences);
+        }
+        finally
+        {
+            foreach (var child in children)
+            {
+                log.CompleteEntry(child, "Done");
+                child.Dispose();
+            }
+        }
+    }
+
+    [Fact]
+    public void LoggerInstanceIdsAreGloballyDistinctAndLogEntryDoesNotExposeLegacyIdProperty()
+    {
+        var firstEvents = new List<Logger.PhysicalEmission>();
+        var secondEvents = new List<Logger.PhysicalEmission>();
+        using var first = CreateLogger(firstEvents);
+        using var second = CreateLogger(secondEvents);
+
+        Assert.NotEqual(Guid.Empty, first.InstanceId);
+        Assert.NotEqual(Guid.Empty, second.InstanceId);
+        Assert.NotEqual(first.InstanceId, second.InstanceId);
+
+        Assert.Null(typeof(LogEntry).GetProperty("Id"));
+        Assert.NotNull(typeof(LogEntry).GetProperty(nameof(LogEntry.EntrySequence)));
     }
 
     [Fact]

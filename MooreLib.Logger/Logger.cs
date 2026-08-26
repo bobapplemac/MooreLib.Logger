@@ -3,7 +3,7 @@
 //
 // ------------------------------------------------------------------------------------------
 // File:        Logger.cs
-// Revision:    r16
+// Revision:    r17
 // Modified:    2026-08-26
 // Author:      Andrew J. Moore
 // License:     MIT License
@@ -14,11 +14,10 @@
 //              ambient context, structured properties, and deterministic entry handles while
 //              NLog remains responsible for physical targets and file/archive mechanics.
 //
-//              Revision r16 adds explicit terminal-child completion through CompleteWithChild(...) and
-//              a visible tree-closure marker (┴) for message-less completion of entries whose tree has
-//              already emitted visible child/continuation content. It also makes LogEntry the sole public
-//              explicit-entry reference type, removes numeric entry-targeting overloads and the implicit
-//              LogEntry-to-long conversion, and removes the ambiguous level-bearing CompleteEntry overload.
+//              Revision r17 merges the former internal EntryRecord into LogEntry so the public handle is also
+//              the authoritative per-entry state object. Object identity now drives active-entry lookup,
+//              physical-line ownership, and explicit targeting. Structured correlation uses a GUID logger
+//              InstanceId plus logger-instance-scoped EntrySequence/ParentEntrySequence metadata.
 // ------------------------------------------------------------------------------------------
 
 #nullable enable
@@ -45,6 +44,9 @@ public sealed partial class Logger : IDisposable
 
     /// <summary>Sentinel value indicating that archive-count retention is disabled.</summary>
     public const int UnlimitedArchiveFiles = -1;
+
+    /// <summary>Gets the globally unique identifier assigned to this logger instance.</summary>
+    public Guid InstanceId => _ownerId;
 
     private readonly LoggerOptions _options;
 
@@ -178,7 +180,7 @@ public sealed partial class Logger : IDisposable
         }
     }
 
-    internal void DisposeEntryHandle(long entryId)
+    internal void DisposeEntryHandle(LogEntry entry)
     {
         lock (_coordinatorSync)
         {
@@ -187,7 +189,7 @@ public sealed partial class Logger : IDisposable
                 return;
             }
 
-            if (!_activeEntries.TryGetValue(entryId, out var entry) || !entry.IsActive)
+            if (!entry.BelongsTo(this) || !_activeEntries.Contains(entry) || !entry.IsActive)
             {
                 return;
             }
@@ -221,13 +223,13 @@ public sealed partial class Logger : IDisposable
                     failure ??= ex;
                 }
 
-                foreach (var entry in _activeEntries.Values)
+                foreach (var entry in _activeEntries)
                 {
                     entry.State = EntryLifecycleState.Completed;
                 }
                 _activeEntries.Clear();
                 _currentEntry.Value = null;
-                _openPhysicalEntryId = null;
+                _openPhysicalEntry = null;
 
                 try
                 {

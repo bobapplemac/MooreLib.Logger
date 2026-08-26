@@ -16,32 +16,32 @@ public sealed partial class Logger
 {
     private static string FormatRootBegin(string message) => message;
 
-    private string FormatEntryBeginPrefix(EntryRecord entry, bool terminal, string message) =>
+    private string FormatEntryBeginPrefix(LogEntry entry, bool terminal, string message) =>
         string.Concat(
             CreateAncestryColumns(entry, includeImmediateParent: false),
             terminal ? "└" : "├",
             message.Length == 0 ? string.Empty : " ");
 
-    private string FormatContinuationLine(EntryRecord entry, string message) =>
+    private string FormatContinuationLine(LogEntry entry, string message) =>
         FormatEntryContentLine(entry, terminal: false, message);
 
-    private string FormatEndLine(EntryRecord entry, string message) =>
+    private string FormatEndLine(LogEntry entry, string message) =>
         FormatEntryContentLine(entry, terminal: true, message);
 
-    private string FormatTreeClosureLine(EntryRecord entry) =>
+    private string FormatTreeClosureLine(LogEntry entry) =>
         string.Concat(CreateAncestryColumns(entry, includeImmediateParent: true), "┴");
 
-    private string FormatTerminalChildContentLine(EntryRecord entry, bool terminal, string message) =>
+    private string FormatTerminalChildContentLine(LogEntry entry, bool terminal, string message) =>
         message.Length == 0
             ? string.Concat(CreateAncestryColumns(entry, includeImmediateParent: true, forceCompletedAncestor: entry.Parent), terminal ? "└" : "├")
             : string.Concat(CreateAncestryColumns(entry, includeImmediateParent: true, forceCompletedAncestor: entry.Parent), terminal ? "└ " : "├ ", message);
 
-    private string FormatEntryContentLine(EntryRecord entry, bool terminal, string message) =>
+    private string FormatEntryContentLine(LogEntry entry, bool terminal, string message) =>
         message.Length == 0
             ? string.Concat(CreateAncestryColumns(entry, includeImmediateParent: true), terminal ? "└" : "├")
             : string.Concat(CreateAncestryColumns(entry, includeImmediateParent: true), terminal ? "└ " : "├ ", message);
 
-    private string FormatInlineResume(EntryRecord entry, string message)
+    private string FormatInlineResume(LogEntry entry, string message)
     {
         var prefix = message.Length == 0
             ? _options.InlineResumePrefix.TrimEnd()
@@ -53,13 +53,13 @@ public sealed partial class Logger
         string.Concat(terminal ? "└" : "├", message.Length == 0 ? string.Empty : " ");
 
     private string CreateAncestryColumns(
-        EntryRecord entry,
+        LogEntry entry,
         bool includeImmediateParent,
-        EntryRecord? forceCompletedAncestor = null)
+        LogEntry? forceCompletedAncestor = null)
     {
         if (_options.EntryIndentSize == 0) return string.Empty;
 
-        var ancestors = new List<EntryRecord>();
+        var ancestors = new List<LogEntry>();
         for (var current = entry.Parent; current is not null; current = current.Parent)
         {
             ancestors.Add(current);
@@ -167,8 +167,9 @@ public sealed partial class Logger
             {
                 EventPropertiesRenderer.Exclude = new HashSet<string>(StringComparer.Ordinal)
                 {
-                    EntryIdPropertyName,
-                    ParentEntryIdPropertyName,
+                    InstanceIdPropertyName,
+                    EntrySequencePropertyName,
+                    ParentEntrySequencePropertyName,
                     EntryTypePropertyName,
                     EntryDepthPropertyName
                 };

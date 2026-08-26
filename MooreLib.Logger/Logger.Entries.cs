@@ -13,7 +13,7 @@ public sealed partial class Logger
     /// <param name="properties">Structured properties retained by the entry and inherited by children.</param>
     /// <returns>A disposable handle representing the newly created logical entry. The handle is used for explicit entry targeting.</returns>
     public LogEntry BeginEntry(LogLevel level, string message, params LogProperty[] properties) =>
-        BeginEntryCore(level, message, leaveLineOpen: false, explicitParentId: null, exception: null, properties);
+        BeginEntryCore(level, message, leaveLineOpen: false, explicitParent: null, useExplicitParent: false, exception: null, properties);
 
     /// <summary>Begins a logical entry with an attached exception and terminates its initial physical line.</summary>
     /// <param name="level">Entry severity.</param>
@@ -24,7 +24,7 @@ public sealed partial class Logger
     public LogEntry BeginEntry(LogLevel level, string message, Exception exception, params LogProperty[] properties)
     {
         ArgumentNullException.ThrowIfNull(exception);
-        return BeginEntryCore(level, message, leaveLineOpen: false, explicitParentId: null, exception, properties);
+        return BeginEntryCore(level, message, leaveLineOpen: false, explicitParent: null, useExplicitParent: false, exception, properties);
     }
 
     /// <summary>Begins a logical entry and leaves its initial physical line open.</summary>
@@ -33,7 +33,7 @@ public sealed partial class Logger
     /// <param name="properties">Structured properties retained by the entry and inherited by children.</param>
     /// <returns>A disposable handle representing the newly created logical entry. The handle is used for explicit entry targeting.</returns>
     public LogEntry BeginInline(LogLevel level, string message, params LogProperty[] properties) =>
-        BeginEntryCore(level, message, leaveLineOpen: true, explicitParentId: null, exception: null, properties);
+        BeginEntryCore(level, message, leaveLineOpen: true, explicitParent: null, useExplicitParent: false, exception: null, properties);
 
     /// <summary>Begins a logical child entry beneath an active parent and terminates its initial physical line.</summary>
     /// <param name="parentEntry">Active parent entry handle.</param>
@@ -42,7 +42,7 @@ public sealed partial class Logger
     /// <param name="properties">Structured properties merged over inherited parent properties.</param>
     /// <returns>A disposable handle representing the newly created logical entry. The handle is used for explicit entry targeting.</returns>
     public LogEntry BeginEntry(LogEntry parentEntry, LogLevel level, string message, params LogProperty[] properties) =>
-        BeginEntryCore(level, message, leaveLineOpen: false, GetEntryId(parentEntry), exception: null, properties);
+        BeginEntryCore(level, message, leaveLineOpen: false, parentEntry, useExplicitParent: true, exception: null, properties);
 
     /// <summary>Begins a logical child entry with an attached exception beneath an active parent.</summary>
     /// <param name="parentEntry">Active parent entry handle.</param>
@@ -54,7 +54,7 @@ public sealed partial class Logger
     public LogEntry BeginEntry(LogEntry parentEntry, LogLevel level, string message, Exception exception, params LogProperty[] properties)
     {
         ArgumentNullException.ThrowIfNull(exception);
-        return BeginEntryCore(level, message, leaveLineOpen: false, GetEntryId(parentEntry), exception, properties);
+        return BeginEntryCore(level, message, leaveLineOpen: false, parentEntry, useExplicitParent: true, exception, properties);
     }
 
     /// <summary>Begins an inline logical child entry beneath an active parent.</summary>
@@ -64,7 +64,7 @@ public sealed partial class Logger
     /// <param name="properties">Structured properties merged over inherited parent properties.</param>
     /// <returns>A disposable handle representing the newly created logical entry. The handle is used for explicit entry targeting.</returns>
     public LogEntry BeginInline(LogEntry parentEntry, LogLevel level, string message, params LogProperty[] properties) =>
-        BeginEntryCore(level, message, leaveLineOpen: true, GetEntryId(parentEntry), exception: null, properties);
+        BeginEntryCore(level, message, leaveLineOpen: true, parentEntry, useExplicitParent: true, exception: null, properties);
 
     /// <summary>Begins a Trace-level logical entry and closes its initial physical line.</summary>
     /// <param name="message">Initial entry message.</param>
@@ -206,27 +206,27 @@ public sealed partial class Logger
     /// <param name="message">Message fragment to write.</param>
     /// <param name="properties">Structured properties attached to this physical event.</param>
     public void Write(string message, params LogProperty[] properties) =>
-        WriteCore(entryId: null, explicitEntryId: false, message, endLine: false, properties);
+        WriteCore(explicitEntry: null, useExplicitEntry: false, message, endLine: false, properties);
 
     /// <summary>Writes text to an explicitly identified active logical entry without terminating its current physical line.</summary>
     /// <param name="entry">Active entry handle.</param>
     /// <param name="message">Message fragment to write.</param>
     /// <param name="properties">Structured properties attached to this physical event.</param>
     public void Write(LogEntry entry, string message, params LogProperty[] properties) =>
-        WriteCore(GetEntryId(entry), explicitEntryId: true, message, endLine: false, properties);
+        WriteCore(entry, useExplicitEntry: true, message, endLine: false, properties);
 
     /// <summary>Writes text to the ambient logical entry and terminates the physical line while leaving the entry active.</summary>
     /// <param name="message">Message text to write before ending the physical line.</param>
     /// <param name="properties">Structured properties attached to the generated physical events.</param>
     public void WriteLine(string message, params LogProperty[] properties) =>
-        WriteCore(entryId: null, explicitEntryId: false, message, endLine: true, properties);
+        WriteCore(explicitEntry: null, useExplicitEntry: false, message, endLine: true, properties);
 
     /// <summary>Writes text to an explicitly identified entry and terminates the physical line while leaving the entry active.</summary>
     /// <param name="entry">Active entry handle.</param>
     /// <param name="message">Message text to write before ending the physical line.</param>
     /// <param name="properties">Structured properties attached to the generated physical events.</param>
     public void WriteLine(LogEntry entry, string message, params LogProperty[] properties) =>
-        WriteCore(GetEntryId(entry), explicitEntryId: true, message, endLine: true, properties);
+        WriteCore(entry, useExplicitEntry: true, message, endLine: true, properties);
 
     /// <summary>Terminates the current physical line of the ambient entry, or writes an empty standalone Info event if no entry is active.</summary>
     public void WriteLine() => WriteLine(string.Empty);
@@ -237,13 +237,13 @@ public sealed partial class Logger
 
     /// <summary>Completes the ambient logical entry without adding message text.</summary>
     public void CompleteEntry() =>
-        CompleteEntryCore(entryId: null, explicitEntryId: false, message: null, exception: null, properties: null);
+        CompleteEntryCore(explicitEntry: null, useExplicitEntry: false, message: null, exception: null, properties: null);
 
     /// <summary>Completes the ambient logical entry and writes terminal message text.</summary>
     /// <param name="message">Terminal message text.</param>
     /// <param name="properties">Structured properties attached to the terminal output.</param>
     public void CompleteEntry(string message, params LogProperty[] properties) =>
-        CompleteEntryCore(entryId: null, explicitEntryId: false, message, exception: null, properties);
+        CompleteEntryCore(explicitEntry: null, useExplicitEntry: false, message, exception: null, properties);
 
     /// <summary>Completes the ambient logical entry with terminal message text and an attached exception.</summary>
     /// <param name="message">Terminal message text.</param>
@@ -252,20 +252,20 @@ public sealed partial class Logger
     public void CompleteEntry(string message, Exception exception, params LogProperty[] properties)
     {
         ArgumentNullException.ThrowIfNull(exception);
-        CompleteEntryCore(entryId: null, explicitEntryId: false, message, exception, properties);
+        CompleteEntryCore(explicitEntry: null, useExplicitEntry: false, message, exception, properties);
     }
 
     /// <summary>Completes an explicitly identified active logical entry without adding message text.</summary>
     /// <param name="entry">Active entry handle.</param>
     public void CompleteEntry(LogEntry entry) =>
-        CompleteEntryCore(GetEntryId(entry), explicitEntryId: true, message: null, exception: null, properties: null);
+        CompleteEntryCore(entry, useExplicitEntry: true, message: null, exception: null, properties: null);
 
     /// <summary>Completes an explicitly identified active logical entry and writes terminal message text.</summary>
     /// <param name="entry">Active entry handle.</param>
     /// <param name="message">Terminal message text.</param>
     /// <param name="properties">Structured properties attached to the terminal output.</param>
     public void CompleteEntry(LogEntry entry, string message, params LogProperty[] properties) =>
-        CompleteEntryCore(GetEntryId(entry), explicitEntryId: true, message, exception: null, properties);
+        CompleteEntryCore(entry, useExplicitEntry: true, message, exception: null, properties);
 
     /// <summary>Completes an explicitly identified active logical entry with terminal message text and an attached exception.</summary>
     /// <param name="entry">Active entry handle.</param>
@@ -275,7 +275,7 @@ public sealed partial class Logger
     public void CompleteEntry(LogEntry entry, string message, Exception exception, params LogProperty[] properties)
     {
         ArgumentNullException.ThrowIfNull(exception);
-        CompleteEntryCore(GetEntryId(entry), explicitEntryId: true, message, exception, properties);
+        CompleteEntryCore(entry, useExplicitEntry: true, message, exception, properties);
     }
 
     /// <summary>Creates a terminal one-shot child beneath an active parent and completes the parent in the same coordinated operation.</summary>
@@ -296,7 +296,7 @@ public sealed partial class Logger
     /// <param name="message">Terminal child message.</param>
     /// <param name="properties">Structured properties merged over inherited parent properties.</param>
     public void CompleteWithChild(LogEntry parentEntry, LogLevel level, string message, params LogProperty[] properties) =>
-        WriteAttachedEventCore(GetEntryId(parentEntry), level, message, exception: null, properties, completeParent: true);
+        WriteAttachedEventCore(parentEntry, level, message, exception: null, properties, completeParent: true);
 
     /// <summary>Creates a terminal one-shot child with an attached exception beneath an active parent and completes the parent.</summary>
     /// <param name="parentEntry">Active parent entry handle.</param>
@@ -315,30 +315,20 @@ public sealed partial class Logger
     public void CompleteWithChild(LogEntry parentEntry, LogLevel level, string message, Exception exception, params LogProperty[] properties)
     {
         ArgumentNullException.ThrowIfNull(exception);
-        WriteAttachedEventCore(GetEntryId(parentEntry), level, message, exception, properties, completeParent: true);
+        WriteAttachedEventCore(parentEntry, level, message, exception, properties, completeParent: true);
     }
 
     /// <summary>Begins the terminal physical line of the ambient entry and leaves it open for subsequent <see cref="Write(string, LogProperty[])"/> calls.</summary>
     /// <param name="message">Initial text for the terminal inline line.</param>
     /// <param name="properties">Structured properties attached to the terminal-line event.</param>
     public void CompleteEntryInline(string message, params LogProperty[] properties) =>
-        CompleteEntryInlineCore(entryId: null, explicitEntryId: false, message, properties);
+        CompleteEntryInlineCore(explicitEntry: null, useExplicitEntry: false, message, properties);
 
     /// <summary>Begins the terminal physical line of an explicitly identified entry and leaves it open for subsequent writes.</summary>
     /// <param name="entry">Active entry handle.</param>
     /// <param name="message">Initial text for the terminal inline line.</param>
     /// <param name="properties">Structured properties attached to the terminal-line event.</param>
     public void CompleteEntryInline(LogEntry entry, string message, params LogProperty[] properties) =>
-        CompleteEntryInlineCore(GetEntryId(entry), explicitEntryId: true, message, properties);
+        CompleteEntryInlineCore(entry, useExplicitEntry: true, message, properties);
 
-    private long GetEntryId(LogEntry entry)
-    {
-        ArgumentNullException.ThrowIfNull(entry);
-        if (!entry.BelongsTo(this))
-        {
-            throw new ArgumentException("The supplied LogEntry belongs to a different Logger instance.", nameof(entry));
-        }
-
-        return entry.Id;
-    }
 }

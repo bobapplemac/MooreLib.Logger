@@ -56,7 +56,7 @@ public sealed partial class Logger
     }
 
     private void WriteAttachedEventCore(
-        long parentEntryId,
+        LogEntry parentEntry,
         LogLevel level,
         string message,
         Exception? exception,
@@ -71,15 +71,16 @@ public sealed partial class Logger
             ThrowIfNotActiveLocked();
             _ = ToNLogLevel(level);
 
-            var parent = ResolveExplicitEntryLocked(parentEntryId, "parent entry");
+            var parent = ResolveExplicitEntryLocked(parentEntry, "parent entry");
             if (parent.IsCompleting)
             {
                 throw new InvalidOperationException(
-                    $"Cannot attach a new child because parent entry {parentEntryId} is already being completed.");
+                    $"Cannot attach a new child because parent entry {parent.EntrySequence} is already being completed.");
             }
 
-            var child = new EntryRecord(
-                NextEntryIdLocked(),
+            var child = new LogEntry(
+                this,
+                NextEntrySequenceLocked(),
                 parent,
                 level,
                 MergeProperties(parent.Properties, properties));
@@ -143,7 +144,8 @@ public sealed partial class Logger
         LogLevel level,
         string message,
         bool leaveLineOpen,
-        long? explicitParentId,
+        LogEntry? explicitParent,
+        bool useExplicitParent,
         Exception? exception,
         LogProperty[]? properties)
     {
@@ -156,19 +158,19 @@ public sealed partial class Logger
             _ = ToNLogLevel(level);
 
             var inheritedContext = GetCurrentContextLocked();
-            EntryRecord? parent = null;
+            LogEntry? parent = null;
             EntryContext? parentContext = null;
 
-            if (explicitParentId.HasValue)
+            if (useExplicitParent)
             {
-                parent = ResolveExplicitEntryLocked(explicitParentId.Value, "parent entry");
+                parent = ResolveExplicitEntryLocked(explicitParent!, "parent entry");
                 if (parent.IsCompleting)
                 {
                     throw new InvalidOperationException(
-                        $"Cannot begin a child because parent entry {parent.Id} is already being completed.");
+                        $"Cannot begin a child because parent entry {parent.EntrySequence} is already being completed.");
                 }
 
-                parentContext = FindContext(inheritedContext, parent.Id)
+                parentContext = FindContext(inheritedContext, parent)
                     ?? new EntryContext(parent, inheritedContext);
             }
             else if (inheritedContext is not null)
@@ -177,18 +179,19 @@ public sealed partial class Logger
                 if (parent.IsCompleting)
                 {
                     throw new InvalidOperationException(
-                        $"Cannot begin a nested entry because current entry {parent.Id} is already being completed.");
+                        $"Cannot begin a nested entry because current entry {parent.EntrySequence} is already being completed.");
                 }
                 parentContext = inheritedContext;
             }
 
-            var entry = new EntryRecord(
-                NextEntryIdLocked(),
+            var entry = new LogEntry(
+                this,
+                NextEntrySequenceLocked(),
                 parent,
                 level,
                 MergeProperties(parent?.Properties, properties));
 
-            _activeEntries.Add(entry.Id, entry);
+            _activeEntries.Add(entry);
             _currentEntry.Value = new EntryContext(entry, parentContext);
 
             var visible = IsVisibleAtAnyDestinationLocked(level);
@@ -204,7 +207,7 @@ public sealed partial class Logger
                         exception,
                         PhysicalOutputKind.HeaderLineOpen);
 
-                    if (entry.ParentEntryId.HasValue)
+                    if (entry.Parent is not null)
                     {
                         first.PhysicalPrefix = FormatEntryBeginPrefix(entry, terminal: false, text);
                     }
@@ -248,15 +251,15 @@ public sealed partial class Logger
                         var firstLine = i == 0;
                         var logEvent = CreatePhysicalEvent(
                             level,
-                            firstLine && !entry.ParentEntryId.HasValue
+                            firstLine && entry.Parent is null
                                 ? FormatRootBegin(lines[i])
                                 : lines[i],
                             firstLine ? exception : null,
                             firstLine
-                                ? (entry.ParentEntryId.HasValue ? PhysicalOutputKind.HeaderLine : PhysicalOutputKind.NormalLine)
+                                ? (entry.Parent is not null ? PhysicalOutputKind.HeaderLine : PhysicalOutputKind.NormalLine)
                                 : PhysicalOutputKind.FragmentLine);
 
-                        if (firstLine && entry.ParentEntryId.HasValue)
+                        if (firstLine && entry.Parent is not null)
                         {
                             logEvent.PhysicalPrefix = FormatEntryBeginPrefix(entry, terminal: false, lines[i]);
                         }
@@ -287,13 +290,13 @@ public sealed partial class Logger
                 entry.State = EntryLifecycleState.ActiveLineClosed;
             }
 
-            return new LogEntry(this, entry.Id);
+            return entry;
         }
     }
 
     private void WriteCore(
-        long? entryId,
-        bool explicitEntryId,
+        LogEntry? explicitEntry,
+        bool useExplicitEntry,
         string message,
         bool endLine,
         LogProperty[]? properties)
@@ -304,8 +307,8 @@ public sealed partial class Logger
         lock (_coordinatorSync)
         {
             ThrowIfNotActiveLocked();
-            var entry = explicitEntryId
-                ? ResolveExplicitEntryLocked(entryId!.Value, "entry")
+            var entry = useExplicitEntry
+                ? ResolveExplicitEntryLocked(explicitEntry!, "entry")
                 : ResolveAmbientEntryLocked();
 
             if (entry is null)
@@ -316,7 +319,7 @@ public sealed partial class Logger
 
             if (entry.State == EntryLifecycleState.Completed)
             {
-                throw new InvalidOperationException($"Log entry {entry.Id} is no longer active.");
+                throw new InvalidOperationException($"Log entry {entry.EntrySequence} is no longer active.");
             }
 
             if (entry.IsCompleting && endLine)
@@ -335,7 +338,7 @@ public sealed partial class Logger
         }
     }
 
-    private void WriteInlineFragmentLocked(EntryRecord entry, string text, LogProperty[]? properties)
+    private void WriteInlineFragmentLocked(LogEntry entry, string text, LogProperty[]? properties)
     {
         if (!IsVisibleAtAnyDestinationLocked(entry.Level))
         {
@@ -401,7 +404,7 @@ public sealed partial class Logger
                 break;
 
             default:
-                throw new InvalidOperationException($"Log entry {entry.Id} cannot accept inline output in state {entry.State}.");
+                throw new InvalidOperationException($"Log entry {entry.EntrySequence} cannot accept inline output in state {entry.State}.");
         }
 
         ApplyProperties(logEvent, entry.Properties);
@@ -433,7 +436,7 @@ public sealed partial class Logger
     }
 
     private void WriteClosedPhysicalLinesLocked(
-        EntryRecord entry,
+        LogEntry entry,
         string[] lines,
         LogProperty[]? properties)
     {
@@ -498,8 +501,8 @@ public sealed partial class Logger
     }
 
     private void CompleteEntryInlineCore(
-        long? entryId,
-        bool explicitEntryId,
+        LogEntry? explicitEntry,
+        bool useExplicitEntry,
         string message,
         LogProperty[]? properties)
     {
@@ -509,8 +512,8 @@ public sealed partial class Logger
         lock (_coordinatorSync)
         {
             ThrowIfNotActiveLocked();
-            var entry = explicitEntryId
-                ? ResolveExplicitEntryLocked(entryId!.Value, "entry")
+            var entry = useExplicitEntry
+                ? ResolveExplicitEntryLocked(explicitEntry!, "entry")
                 : ResolveAmbientEntryLocked()
                     ?? throw new InvalidOperationException("No active logical entry is available to complete inline.");
 
@@ -559,8 +562,8 @@ public sealed partial class Logger
     }
 
     private void CompleteEntryCore(
-        long? entryId,
-        bool explicitEntryId,
+        LogEntry? explicitEntry,
+        bool useExplicitEntry,
         string? message,
         Exception? exception,
         LogProperty[]? properties)
@@ -570,8 +573,8 @@ public sealed partial class Logger
         lock (_coordinatorSync)
         {
             ThrowIfNotActiveLocked();
-            var entry = explicitEntryId
-                ? ResolveExplicitEntryLocked(entryId!.Value, "entry")
+            var entry = useExplicitEntry
+                ? ResolveExplicitEntryLocked(explicitEntry!, "entry")
                 : ResolveAmbientEntryLocked();
 
             if (entry is null)
@@ -584,14 +587,14 @@ public sealed partial class Logger
     }
 
     private void CompleteEntryLocked(
-        EntryRecord entry,
+        LogEntry entry,
         string? message,
         Exception? exception,
         LogProperty[]? properties)
     {
         if (entry.State == EntryLifecycleState.Completed)
         {
-            throw new InvalidOperationException($"Log entry {entry.Id} is no longer active.");
+            throw new InvalidOperationException($"Log entry {entry.EntrySequence} is no longer active.");
         }
 
         var lines = BuildOptionalCompletionLines(entry.Level, message, exception);
