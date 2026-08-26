@@ -5,6 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <GenerateDocumentationFile>True</GenerateDocumentationFile>
+	<GenerateDependencyFile>false</GenerateDependencyFile>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageProjectUrl>https://github.com/bobapplemac/MooreLib.Logger</PackageProjectUrl>
     <Description>Structured, context-aware .NET logging built on NLog, with logical entries, progressive inline output, nested formatting, and structured properties.</Description>
