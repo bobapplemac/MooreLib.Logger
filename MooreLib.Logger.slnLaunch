@@ -1,0 +1,12 @@
+[
+  {
+    "Name": "Demo",
+    "Projects": [
+      {
+        "Path": "MooreLib.Logger.Demo\\MooreLib.Logger.Demo.csproj",
+        "Action": "Start",
+        "DebugTarget": "MooreLib.Logger.Demo"
+      }
+    ]
+  }
+]
