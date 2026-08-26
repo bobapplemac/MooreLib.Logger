@@ -639,7 +639,7 @@ public sealed class LoggerTests
     }
 
     [Fact]
-    public void DisposalFailureStillReleasesConsoleAndFileOwnership()
+    public void DisposalFailureStillDisposesBackendAndAllowsFileToBeReopened()
     {
         var root = Path.Combine(Path.GetTempPath(), "MooreLib.Logger.Tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
@@ -650,8 +650,12 @@ public sealed class LoggerTests
             var log = new Logger(new LoggerOptions
             {
                 MinimumConsoleLevel = LogLevel.Fatal,
+                MinimumFileLevel = LogLevel.Trace,
                 IncludeConsoleTimestamp = false,
-                IncludeConsoleLogLevel = false
+                IncludeConsoleLogLevel = false,
+                IncludeFileTimestamp = false,
+                IncludeFileLogLevel = false,
+                IncludeFileEntryMetadata = false
             });
             log.EnableFileLogging(path);
             log.SetTestFlushHook(() => throw new IOException("simulated flush failure"));
@@ -661,36 +665,18 @@ public sealed class LoggerTests
             using var replacement = new Logger(new LoggerOptions
             {
                 MinimumConsoleLevel = LogLevel.Fatal,
+                MinimumFileLevel = LogLevel.Trace,
                 IncludeConsoleTimestamp = false,
-                IncludeConsoleLogLevel = false
+                IncludeConsoleLogLevel = false,
+                IncludeFileTimestamp = false,
+                IncludeFileLogLevel = false,
+                IncludeFileEntryMetadata = false
             });
+            replacement.EnableFileLogging(path);
+            replacement.Info("REOPENED");
+            replacement.DisableFileLogging();
 
-            var registryProbe = Guid.NewGuid();
-            DestinationOwnershipRegistry.AcquireFile(registryProbe, path);
-            DestinationOwnershipRegistry.ReleaseFile(registryProbe, path);
-        }
-        finally
-        {
-            Directory.Delete(root, recursive: true);
-        }
-    }
-
-    [Fact]
-    public void DestinationRegistryNormalizesAndReleasesFileOwnership()
-    {
-        var first = Guid.NewGuid();
-        var second = Guid.NewGuid();
-        var root = Path.Combine(Path.GetTempPath(), "MooreLib.Logger.Tests", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
-        var path = Path.Combine(root, "app.log");
-
-        try
-        {
-            var normalized = DestinationOwnershipRegistry.AcquireFile(first, path);
-            Assert.Throws<InvalidOperationException>(() => DestinationOwnershipRegistry.AcquireFile(second, normalized));
-            DestinationOwnershipRegistry.ReleaseFile(first, path);
-            DestinationOwnershipRegistry.AcquireFile(second, normalized);
-            DestinationOwnershipRegistry.ReleaseFile(second, normalized);
+            Assert.Contains("REOPENED", File.ReadAllText(path), StringComparison.Ordinal);
         }
         finally
         {
@@ -1080,7 +1066,7 @@ public sealed class LoggerTests
     }
 
     [Fact]
-    public void FailedFileEnableReleasesProspectiveOwnershipAndKeepsConsoleOnlyState()
+    public void FailedFileEnableKeepsConsoleOnlyStateAndCanBeRetried()
     {
         var root = Path.Combine(Path.GetTempPath(), "MooreLib.Logger.Tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
@@ -1099,10 +1085,13 @@ public sealed class LoggerTests
             });
 
             Assert.Throws<InvalidOperationException>(() => log.EnableFileLogging(path));
+            Assert.False(File.Exists(path));
 
-            var probe = Guid.NewGuid();
-            DestinationOwnershipRegistry.AcquireFile(probe, path);
-            DestinationOwnershipRegistry.ReleaseFile(probe, path);
+            log.SetTestConfigurationApplyHook(null);
+            log.EnableFileLogging(path);
+            log.Info("RETRY SUCCEEDED");
+            log.DisableFileLogging();
+            Assert.Contains("RETRY SUCCEEDED", File.ReadAllText(path), StringComparison.Ordinal);
         }
         finally
         {
@@ -1111,7 +1100,7 @@ public sealed class LoggerTests
     }
 
     [Fact]
-    public void FailedFileDisableRetainsWorkingFileConfigurationAndOwnership()
+    public void FailedFileDisableRetainsWorkingFileConfiguration()
     {
         var root = Path.Combine(Path.GetTempPath(), "MooreLib.Logger.Tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
@@ -1134,8 +1123,6 @@ public sealed class LoggerTests
             });
 
             Assert.Throws<InvalidOperationException>(() => log.DisableFileLogging());
-            var probe = Guid.NewGuid();
-            Assert.Throws<InvalidOperationException>(() => DestinationOwnershipRegistry.AcquireFile(probe, path));
 
             log.SetTestConfigurationApplyHook(null);
             log.Info("STILL ACTIVE");
@@ -1149,10 +1136,15 @@ public sealed class LoggerTests
     }
 
     [Fact]
-    public void FailedFileSwitchRetainsOldDestinationAndReleasesNewClaim()
+    public void FailedFileSwitchRetainsOldDestinationAndCanLaterSwitch()
     {
-        var root = Path.Combine(Path.GetTempPath(), "MooreLib.Logger.Tests", Guid.NewGuid().ToString("N"));
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            "MooreLib.Logger.Tests",
+            Guid.NewGuid().ToString("N"));
+
         Directory.CreateDirectory(root);
+
         var pathA = Path.Combine(root, "A.log");
         var pathB = Path.Combine(root, "B.log");
 
@@ -1166,27 +1158,49 @@ public sealed class LoggerTests
                 IncludeFileLogLevel = false,
                 IncludeFileEntryMetadata = false
             });
+
             log.EnableFileLogging(pathA);
+
             var normalizedB = Path.GetFullPath(pathB);
+
             log.SetTestConfigurationApplyHook(candidate =>
             {
-                if (candidate is not null && Path.GetFullPath(candidate) == normalizedB)
-                    throw new InvalidOperationException("Injected switch failure.");
+                if (candidate is not null &&
+                    Path.GetFullPath(candidate) == normalizedB)
+                {
+                    throw new InvalidOperationException(
+                        "Injected switch failure.");
+                }
             });
 
-            Assert.Throws<InvalidOperationException>(() => log.EnableFileLogging(pathB));
+            Assert.Throws<InvalidOperationException>(
+                () => log.EnableFileLogging(pathB));
 
-            var probeA = Guid.NewGuid();
-            Assert.Throws<InvalidOperationException>(() => DestinationOwnershipRegistry.AcquireFile(probeA, pathA));
-
-            var probeB = Guid.NewGuid();
-            DestinationOwnershipRegistry.AcquireFile(probeB, pathB);
-            DestinationOwnershipRegistry.ReleaseFile(probeB, pathB);
-
-            log.SetTestConfigurationApplyHook(null);
+            // The failed switch must leave A as the working destination.
             log.Info("OLD DESTINATION STILL ACTIVE");
+
+            // Remove the injected failure and successfully switch to B.
+            // This releases A before we inspect it.
+            log.SetTestConfigurationApplyHook(null);
+            log.EnableFileLogging(pathB);
+
+            Assert.Contains(
+                "OLD DESTINATION STILL ACTIVE",
+                File.ReadAllText(pathA),
+                StringComparison.Ordinal);
+
+            log.Info("NEW DESTINATION ACTIVE");
             log.DisableFileLogging();
-            Assert.Contains("OLD DESTINATION STILL ACTIVE", File.ReadAllText(pathA), StringComparison.Ordinal);
+
+            Assert.Contains(
+                "NEW DESTINATION ACTIVE",
+                File.ReadAllText(pathB),
+                StringComparison.Ordinal);
+
+            Assert.DoesNotContain(
+                "NEW DESTINATION ACTIVE",
+                File.ReadAllText(pathA),
+                StringComparison.Ordinal);
         }
         finally
         {
@@ -1721,6 +1735,22 @@ public sealed class LoggerTests
             m => m.GetParameters().Length >= 3
                  && m.GetParameters()[0].ParameterType == typeof(LogEntry)
                  && m.GetParameters()[1].ParameterType == typeof(LogLevel));
+    }
+
+    [Fact]
+    public void MultipleLoggerInstancesCanCoexistWithoutProcessLocalDestinationOwnership()
+    {
+        var options = new LoggerOptions
+        {
+            MinimumConsoleLevel = LogLevel.Fatal,
+            IncludeConsoleTimestamp = false,
+            IncludeConsoleLogLevel = false
+        };
+
+        using var first = new Logger(options);
+        using var second = new Logger(options);
+
+        Assert.NotEqual(first.InstanceId, second.InstanceId);
     }
 
 }

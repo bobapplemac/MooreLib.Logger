@@ -11,9 +11,9 @@ public sealed partial class Logger
     /// <summary>Enables or reconfigures immediate file logging at the supplied active file path.</summary>
     /// <param name="filePath">Active log file path. Relative paths are normalized to a full path.</param>
     /// <remarks>
-    /// Configuration changes are transactional. A prospective destination is claimed and configured
+    /// Configuration changes are transactional. A prospective NLog configuration is prepared and applied
     /// before MooreLib commits its own file-target state. If preparation or application fails, the
-    /// previous working configuration and ownership remain intact.
+    /// previous working configuration remains intact.
     /// </remarks>
     public void EnableFileLogging(string filePath)
     {
@@ -32,34 +32,18 @@ public sealed partial class Logger
 
             // Prepare first without mutating active MooreLib/NLog state.
             var prepared = PrepareConfigurationLocked(normalized);
-            var prospectivePath = DestinationOwnershipRegistry.AcquireFile(_ownerId, normalized);
-            var oldPath = _fileLogPath;
 
-            try
-            {
-                CloseOpenPhysicalLineLocked(markInterrupted: true);
-                _logFactory.Flush(_options.DisposeFlushTimeout);
-                ApplyPreparedConfigurationLocked(prepared);
-                CommitPreparedConfigurationLocked(prepared);
-            }
-            catch
-            {
-                DestinationOwnershipRegistry.ReleaseFile(_ownerId, prospectivePath);
-                throw;
-            }
-
-            // The new configuration is now active. Only now may the old destination be released.
-            if (!PathsEqual(oldPath, prospectivePath))
-            {
-                DestinationOwnershipRegistry.ReleaseFile(_ownerId, oldPath);
-            }
+            CloseOpenPhysicalLineLocked(markInterrupted: true);
+            _logFactory.Flush(_options.DisposeFlushTimeout);
+            ApplyPreparedConfigurationLocked(prepared);
+            CommitPreparedConfigurationLocked(prepared);
         }
     }
 
     /// <summary>Disables file logging while preserving console logging and allowing interrupted logical entries to resume later.</summary>
     /// <remarks>
-    /// Console-only configuration is applied successfully before the previous file destination is
-    /// released. A failed disable therefore leaves the previous file configuration and ownership active.
+    /// Console-only configuration is applied successfully before MooreLib commits the disabled file state.
+    /// A failed disable therefore leaves the previous file configuration active.
     /// </remarks>
     public void DisableFileLogging()
     {
@@ -73,16 +57,12 @@ public sealed partial class Logger
                 return;
             }
 
-            var oldPath = _fileLogPath;
             var prepared = PrepareConfigurationLocked(filePath: null);
 
             CloseOpenPhysicalLineLocked(markInterrupted: true);
             _logFactory.Flush(_options.DisposeFlushTimeout);
             ApplyPreparedConfigurationLocked(prepared);
             CommitPreparedConfigurationLocked(prepared);
-
-            // Release only after console-only NLog configuration and MooreLib state commit.
-            DestinationOwnershipRegistry.ReleaseFile(_ownerId, oldPath);
         }
     }
 

@@ -27,7 +27,7 @@ which can render as a single progressively written physical line:
 
 The same physical fragments are written immediately to both console and file destinations. MooreLib.Logger is therefore useful when converting console-oriented applications to persistent logging without giving up natural `Write(...)` / `WriteLine(...)` style progress output.
 
-> **Current source version:** 1.17.0 (revision r17)  
+> **Current source version:** 1.18.0 (revision r18)  
 > **Target framework:** .NET 8  
 > **Logging backend:** NLog 6.2  
 > **Public namespace:** `MooreLib.Logging`  
@@ -655,7 +655,7 @@ Changing from one path to another is also supported:
 Log.EnableFileLogging("Application-2.log");
 ```
 
-Configuration changes are transactional. MooreLib prepares a prospective NLog configuration and destination state before committing it. If configuration fails, the previous working configuration and destination ownership remain intact.
+Configuration changes are transactional. MooreLib prepares and applies a prospective NLog configuration before committing its own file-target state. If configuration fails, the previous working configuration remains active.
 
 Dynamic destination/filter changes are **prospective**:
 
@@ -665,17 +665,13 @@ A logical entry may remain active while filtered. If a destination later becomes
 
 ---
 
-## Destination ownership
+## Destination coordination
 
-MooreLib enforces process-local destination ownership among participating `Logger` instances.
+MooreLib deliberately does **not** enforce process-wide or application-wide ownership of console/file destinations. Each `Logger` coordinates only its own physical stream and NLog configuration.
 
-- only one live MooreLib logger may own the console physical stream;
-- only one live MooreLib logger may own a normalized file path;
-- ownership is released when file logging is disabled or the logger is disposed.
+Applications should avoid configuring independent logging pipelines to write concurrently to the same file unless the chosen NLog/filesystem configuration explicitly supports that scenario. Likewise, unrelated `Console.Write(...)` / `Console.WriteLine(...)` calls or other logging libraries may interleave with MooreLib console output.
 
-This guarantee applies **only among MooreLib.Logger instances in the same process**. MooreLib cannot prevent unrelated `Console.WriteLine(...)` calls, another library, or another process from independently writing to the same destination.
-
-The intended architecture is therefore generally **one master `Logger` instance per application**.
+A shared application-wide `Logger` remains the recommended architecture when one coherent progressive console/file stream is desired, but MooreLib does not enforce that pattern. File-access conflicts and sharing behavior are delegated to NLog and the operating system.
 
 ---
 
@@ -884,11 +880,10 @@ using var entry = Log.BeginInfo("Operation.");
 - terminates an open physical line safely;
 - clears active logical state;
 - flushes NLog within `DisposeFlushTimeout`;
-- releases file ownership;
-- releases console ownership;
+- clears active file-target references;
 - disposes the instance-owned NLog `LogFactory`.
 
-Cleanup is designed so destination ownership is released even if an earlier shutdown operation such as flushing fails.
+Cleanup still disposes the backend even if an earlier shutdown operation such as flushing fails.
 
 No finalizer attempts to complete logical entries. Finalization cannot safely reconstruct original output ordering or `AsyncLocal` context.
 
@@ -936,7 +931,7 @@ The following rules are intentional parts of the public behavior:
 18. `CompleteWithChild(...)` creates a known-terminal child and completes its parent in one coordinated operation.
 19. `LogEntry` object identity is authoritative for explicit targeting, active-entry membership, parent links, and physical-line ownership.
 20. `EntrySequence` is logger-instance-scoped diagnostic metadata, not a lookup key; `(InstanceId, EntrySequence)` provides stable structured correlation across logger instances.
-21. Destination exclusivity is process-local and applies only among participating MooreLib logger instances.
+21. MooreLib does not enforce destination exclusivity across `Logger` instances, other libraries, or processes.
 
 ---
 
@@ -1048,7 +1043,7 @@ MooreLib.Logger/
 The projects have distinct roles:
 
 - **`MooreLib.Logger`** — the library, assembly, and eventual NuGet package;
-- **`MooreLib.Logger.Tests`** — automated state-machine, concurrency, filtering, rollover, ownership, and regression tests;
+- **`MooreLib.Logger.Tests`** — automated state-machine, concurrency, filtering, rollover, configuration, and regression tests;
 - **`MooreLib.Logger.Demo`** — a small executable playground for visually exercising console behavior, progressive writes, tasks/threads, structured properties, exceptions, and live file output.
 
 The repository/project/package identity is intentionally `MooreLib.Logger`, while public consumer types live under the `MooreLib.Logging` namespace:
@@ -1133,7 +1128,7 @@ The current test project covers the state machine and integration-sensitive beha
 - CR/LF/CRLF and trailing-newline preservation;
 - file enable/disable during active inline output;
 - transactional configuration rollback;
-- destination ownership/release;
+- transactional file configuration and rollback;
 - disposal behavior;
 - size and daily safe-boundary rollover;
 - archive retention;
@@ -1166,7 +1161,7 @@ MooreLib.Logger deliberately stays focused.
 - arbitrary target-management APIs;
 - a new message-template language;
 - custom remote logging transports;
-- cross-process destination ownership;
+- process-wide destination ownership or exclusivity enforcement;
 - buffering complete logical entries;
 - buffering file fragments until newline.
 
@@ -1229,6 +1224,7 @@ MooreLib.Logger uses a simple `Major.Revision.0` versioning scheme.
 1.15.0  -> revision r15
 1.16.0  -> revision r16
 1.17.0  -> revision r17
+1.18.0  -> revision r18
 ```
 
 The **revision** component is globally monotonic and increments for every released code change, including small fixes. The patch component is reserved and currently remains `0`.
@@ -1259,7 +1255,7 @@ SPDX-License-Identifier: MIT
 
 # Status
 
-Version **1.17.0** corresponds to **r17**. The architecture remains substantially complete for its intended purpose: NLog-backed application logging with logical entries, structured properties, ancestry-aware nested tree rendering, and console-style progressive output. r17 simplifies the entry engine by merging the former internal `EntryRecord` into `LogEntry`: the handle itself is now the authoritative per-entry state object, while `Logger` retains exclusive mutation authority under the coordinator lock. Numeric IDs are no longer used for engine lookup or physical-line ownership. Structured correlation now uses a GUID `InstanceId` plus logger-instance-scoped `EntrySequence` / `ParentEntrySequence` values. Real application usage should drive future revisions rather than speculative feature expansion.
+Version **1.18.0** corresponds to **r18**. The architecture remains substantially complete for its intended purpose: NLog-backed application logging with logical entries, structured properties, ancestry-aware nested tree rendering, and console-style progressive output. r18 removes the former `DestinationOwnershipRegistry` and related process-local ownership machinery, leaving each `Logger` responsible only for its own coordinated physical stream and transactional NLog configuration. External console/file sharing is intentionally delegated to the application, NLog, and operating system. The r17 `LogEntry` object-identity model and GUID `InstanceId` plus `EntrySequence` / `ParentEntrySequence` structured correlation remain unchanged. Real application usage should drive future revisions rather than speculative feature expansion.
 
 Future changes should favor:
 

@@ -19,7 +19,7 @@ public sealed partial class Logger
     private static readonly Layout ExceptionTextLayout =
         Layout.FromString("${exception:format=tostring}");
 
-    private readonly Guid _ownerId = Guid.NewGuid();
+    private readonly Guid _instanceId = Guid.NewGuid();
     private readonly NLogFactory _logFactory;
     private readonly NLogLogger _nlogLogger;
     private FileTarget? _fileTarget;
@@ -27,7 +27,6 @@ public sealed partial class Logger
     private DateTime _activeFileDate;
     private bool _rolloverRequired;
     private bool _forceArchiveOnNextEligibleWrite;
-    private bool _ownsConsole;
     private Func<DateTime> _currentDateProvider = static () => DateTime.Today;
     private Func<string, long> _fileLengthProvider = TryGetFileLength;
 
@@ -41,20 +40,9 @@ public sealed partial class Logger
 
     private void InitializeBackend()
     {
-        DestinationOwnershipRegistry.AcquireConsole(_ownerId);
-        _ownsConsole = true;
-        try
-        {
-            var prepared = PrepareConfigurationLocked(filePath: null);
-            ApplyPreparedConfigurationLocked(prepared);
-            CommitPreparedConfigurationLocked(prepared);
-        }
-        catch
-        {
-            DestinationOwnershipRegistry.ReleaseConsole(_ownerId);
-            _ownsConsole = false;
-            throw;
-        }
+        var prepared = PrepareConfigurationLocked(filePath: null);
+        ApplyPreparedConfigurationLocked(prepared);
+        CommitPreparedConfigurationLocked(prepared);
     }
 
     private PreparedConfiguration PrepareConfigurationLocked(string? filePath)
@@ -143,8 +131,8 @@ public sealed partial class Logger
                 }
                 catch
                 {
-                    // Preserve the original configuration exception. MooreLib fields and ownership
-                    // are intentionally not committed unless the prospective configuration succeeds.
+                    // Preserve the original configuration exception. MooreLib fields are intentionally
+                    // not committed unless the prospective configuration succeeds.
                 }
             }
             throw;

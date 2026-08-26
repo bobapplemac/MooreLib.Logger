@@ -3,7 +3,7 @@
 //
 // ------------------------------------------------------------------------------------------
 // File:        Logger.cs
-// Revision:    r17
+// Revision:    r18
 // Modified:    2026-08-26
 // Author:      Andrew J. Moore
 // License:     MIT License
@@ -14,10 +14,9 @@
 //              ambient context, structured properties, and deterministic entry handles while
 //              NLog remains responsible for physical targets and file/archive mechanics.
 //
-//              Revision r17 merges the former internal EntryRecord into LogEntry so the public handle is also
-//              the authoritative per-entry state object. Object identity now drives active-entry lookup,
-//              physical-line ownership, and explicit targeting. Structured correlation uses a GUID logger
-//              InstanceId plus logger-instance-scoped EntrySequence/ParentEntrySequence metadata.
+//              Revision r18 removes process-local destination ownership enforcement and related registry
+//              machinery. MooreLib now coordinates only its own Logger instance state and delegates external
+//              console/file sharing behavior to the application, NLog, and operating system.
 // ------------------------------------------------------------------------------------------
 
 #nullable enable
@@ -46,11 +45,11 @@ public sealed partial class Logger : IDisposable
     public const int UnlimitedArchiveFiles = -1;
 
     /// <summary>Gets the globally unique identifier assigned to this logger instance.</summary>
-    public Guid InstanceId => _ownerId;
+    public Guid InstanceId => _instanceId;
 
     private readonly LoggerOptions _options;
 
-    /// <summary>Initializes a logger that immediately owns/configures the process console; file logging remains disabled until enabled explicitly.</summary>
+    /// <summary>Initializes a logger that immediately configures console logging; file logging remains disabled until enabled explicitly.</summary>
     /// <param name="options">Logger configuration, or <see langword="null"/> to use defaults.</param>
     public Logger(LoggerOptions? options = null)
     {
@@ -75,7 +74,6 @@ public sealed partial class Logger : IDisposable
         }
         catch
         {
-            DestinationOwnershipRegistry.ReleaseConsole(_ownerId);
             _logFactory.Dispose();
             throw;
         }
@@ -243,17 +241,12 @@ public sealed partial class Logger : IDisposable
             }
             finally
             {
+                _fileLogPath = null;
+                _fileTarget = null;
+
                 try
                 {
-                    DestinationOwnershipRegistry.ReleaseFile(_ownerId, _fileLogPath);
-                    _fileLogPath = null;
-                    _fileTarget = null;
-
-                    if (_ownsConsole)
-                    {
-                        DestinationOwnershipRegistry.ReleaseConsole(_ownerId);
-                        _ownsConsole = false;
-                    }
+                    _logFactory.Dispose();
                 }
                 catch (Exception ex)
                 {
@@ -261,18 +254,7 @@ public sealed partial class Logger : IDisposable
                 }
                 finally
                 {
-                    try
-                    {
-                        _logFactory.Dispose();
-                    }
-                    catch (Exception ex)
-                    {
-                        failure ??= ex;
-                    }
-                    finally
-                    {
-                        _lifecycleState = LoggerLifecycleState.Disposed;
-                    }
+                    _lifecycleState = LoggerLifecycleState.Disposed;
                 }
             }
         }
