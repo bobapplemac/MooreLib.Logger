@@ -27,7 +27,7 @@ which can render as a single progressively written physical line:
 
 The same physical fragments are written immediately to each enabled destination. Console and file output can be enabled independently, so MooreLib.Logger is useful for interactive applications, file-only services, or applications that want both without giving up natural `Write(...)` / `WriteLine(...)` style progress output.
 
-> **Current source version:** 1.19.0 (revision r19)  
+> **Current source version:** 1.20.0 (revision r20)  
 > **Target framework:** .NET 8  
 > **Logging backend:** NLog 6.2  
 > **Public namespace:** `MooreLib.Logging`  
@@ -38,6 +38,7 @@ The same physical fragments are written immediately to each enabled destination.
 - [Why MooreLib.Logger?](#why-mooreliblogger)
 - [Requirements](#requirements)
 - [Installation](#installation)
+- [Single-file source distribution](#single-file-source-distribution)
 - [Quick start](#quick-start)
 - [Core usage](#core-usage)
 - [Nested entries](#nested-entries)
@@ -141,6 +142,51 @@ Example project reference when the consuming project is a sibling of the library
 The package/project identity is `MooreLib.Logger`, while the public API lives in the `MooreLib.Logging` namespace. This avoids the awkward fully-qualified type name `MooreLib.Logger.Logger` while keeping the repository, assembly, project, and eventual NuGet package names aligned.
 
 Repository: [github.com/bobapplemac/MooreLib.Logger](https://github.com/bobapplemac/MooreLib.Logger)
+
+---
+
+## Single-file source distribution
+
+MooreLib.Logger can also be generated as a standalone C# source file for applications that prefer source inclusion over a project or package reference. The portable distribution contains the same canonical library source combined into one generated file:
+
+```text
+Portable/artifacts/MooreLib.Logger.cs
+```
+
+To use it, add `MooreLib.Logger.cs` directly to the consuming project and add the NLog dependency:
+
+```xml
+<ItemGroup>
+  <PackageReference Include="NLog" Version="6.2.0" />
+</ItemGroup>
+```
+
+Then use the normal public namespace and API:
+
+```csharp
+using MooreLib.Logging;
+
+using var Log = new Logger();
+Log.Info("Application starting.");
+```
+
+The portable file is **generated output, not canonical source**. Do not edit it directly. Changes should be made to the normal source files under `MooreLib.Logger/` and then rebundled. The generated header identifies the source version, repository, license, and NLog dependency so the file remains understandable when used independently of the repository.
+
+The source version embedded in the generated header is read directly from the library project's `FileVersion`. For r20, the generated file therefore reports:
+
+```text
+Source version: 1.20.0.0
+```
+
+The generator is `Portable/SourceBundler`. It uses Roslyn to preserve C# structure while combining the canonical source files, hoisting compilation-unit directives, normalizing file-scoped namespaces where necessary, and preserving source formatting as closely as possible. The generated `Portable/artifacts/` directory is intentionally excluded from source control.
+
+To generate and validate the portable distribution locally:
+
+```bash
+dotnet build Portable/MooreLib.Logger.Portable.msbuildproj -c Release
+```
+
+The portable build project performs the complete workflow: it builds `SourceBundler`, generates `MooreLib.Logger.cs`, and runs `MooreLib.Logger.Portable.Tests` against that exact generated file. This same artifact is intended to be suitable for attachment to future GitHub Releases.
 
 ---
 
@@ -1084,16 +1130,33 @@ MooreLib.Logger/
 │   ├── MooreLib.Logger.Tests.csproj
 │   └── ... automated tests
 │
-└── MooreLib.Logger.Demo/
-    ├── MooreLib.Logger.Demo.csproj
-    └── Program.cs
+├── MooreLib.Logger.Demo/
+│   ├── MooreLib.Logger.Demo.csproj
+│   └── Program.cs
+│
+└── Portable/
+    ├── MooreLib.Logger.Portable.msbuildproj
+    ├── Directory.Build.props
+    ├── SourceBundler/
+    │   ├── SourceBundler.csproj
+    │   └── SourceBundler.cs
+    ├── MooreLib.Logger.Portable.Tests/
+    │   ├── MooreLib.Logger.Portable.Tests.csproj
+    │   └── PortableLoggerTests.cs
+    └── artifacts/
+        └── MooreLib.Logger.cs
 ```
 
 The projects have distinct roles:
 
-- **`MooreLib.Logger`** — the library, assembly, and eventual NuGet package;
-- **`MooreLib.Logger.Tests`** — automated state-machine, concurrency, filtering, rollover, configuration, and regression tests;
-- **`MooreLib.Logger.Demo`** — a small executable playground for visually exercising console behavior, progressive writes, tasks/threads, structured properties, exceptions, and live file output.
+- **`MooreLib.Logger`** — the canonical library, assembly, and eventual NuGet package;
+- **`MooreLib.Logger.Tests`** — automated state-machine, concurrency, filtering, rollover, configuration, and regression tests against the canonical library;
+- **`MooreLib.Logger.Demo`** — a small executable playground for visually exercising console behavior, progressive writes, tasks/threads, structured properties, exceptions, and live file output;
+- **`Portable/SourceBundler`** — a small Roslyn-based build tool that combines the canonical source into the standalone `MooreLib.Logger.cs`;
+- **`MooreLib.Logger.Portable.Tests`** — compile and smoke tests against the generated single-file source rather than the canonical library project;
+- **`MooreLib.Logger.Portable.msbuildproj`** — the portable build orchestrator used by normal solution builds to build the bundler, generate the portable source, and run the portable tests.
+
+`Portable/artifacts/` contains generated/transient output and is not committed. `Portable/Directory.Build.props` redirects the orchestration project's MSBuild/NuGet output beneath that generated artifacts directory so the portable source tree remains clean.
 
 The repository/project/package identity is intentionally `MooreLib.Logger`, while public consumer types live under the `MooreLib.Logging` namespace:
 
@@ -1140,7 +1203,15 @@ dotnet restore
 dotnet build -c Release
 ```
 
-XML documentation output is enabled in the project so the generated documentation accompanies the assembly for IntelliSense/package consumption.
+A normal solution build includes the portable distribution workflow. `MooreLib.Logger.Portable.msbuildproj` builds `SourceBundler`, generates `Portable/artifacts/MooreLib.Logger.cs`, and runs the portable test project against that generated source. A clean solution build therefore verifies both the canonical library and the standalone source distribution.
+
+The portable workflow can also be invoked directly:
+
+```bash
+dotnet build Portable/MooreLib.Logger.Portable.msbuildproj -c Release
+```
+
+XML documentation output is enabled in the main library project so the generated documentation accompanies the assembly for IntelliSense/package consumption.
 
 ---
 
@@ -1152,7 +1223,7 @@ Run the test suite with:
 dotnet test -c Release
 ```
 
-The current test project covers the state machine and integration-sensitive behavior, including:
+The main `MooreLib.Logger.Tests` project covers the state machine and integration-sensitive behavior, including:
 
 - basic logical entries;
 - progressive inline writes;
@@ -1183,6 +1254,8 @@ The current test project covers the state machine and integration-sensitive beha
 - archive retention;
 - stable active filename behavior;
 - NLog callsite-wrapper behavior.
+
+`MooreLib.Logger.Portable.Tests` separately compiles and smoke-tests the generated `Portable/artifacts/MooreLib.Logger.cs`. Its purpose is to catch bundling/distribution failures without duplicating the comprehensive behavioral suite for the canonical project.
 
 ---
 
@@ -1275,6 +1348,7 @@ MooreLib.Logger uses a simple `Major.Revision.0` versioning scheme.
 1.17.0  -> revision r17
 1.18.0  -> revision r18
 1.19.0  -> revision r19
+1.20.0  -> revision r20
 ```
 
 The **revision** component is globally monotonic and increments for every released code change, including small fixes. The patch component is reserved and currently remains `0`.
@@ -1305,7 +1379,11 @@ SPDX-License-Identifier: MIT
 
 # Status
 
-Version **1.19.0** corresponds to **r19**. The architecture remains substantially complete for its intended purpose: NLog-backed application logging with logical entries, structured properties, ancestry-aware nested tree rendering, and console-style progressive output. r19 makes the console an independently configurable destination: it may start disabled, can be enabled or disabled dynamically, and can route visible severities between stdout and stderr using `MinimumStandardErrorLevel`. Destination changes remain prospective and preserve the coordinated physical-stream semantics established by earlier revisions. The r18 simplified destination model and r17 `LogEntry` object-identity/correlation model remain unchanged.
+Version **1.20.0** corresponds to **r20**. The runtime logging architecture remains substantially complete for its intended purpose: NLog-backed application logging with logical entries, structured properties, ancestry-aware nested tree rendering, and console-style progressive output.
+
+r20 adds the portable single-file source distribution and its build/validation pipeline. `Portable/SourceBundler` generates `Portable/artifacts/MooreLib.Logger.cs` directly from the canonical project source, embeds the library `FileVersion` and repository/license information in the generated header, and preserves source formatting while performing the structural transformations needed for a valid combined compilation unit. `MooreLib.Logger.Portable.Tests` then compiles and smoke-tests that exact generated file. The portable orchestration project is included in normal solution builds, so a clean Build Solution validates the standalone distribution alongside the canonical library.
+
+The r19 configurable console destination and stdout/stderr routing, r18 simplified destination model, and r17 `LogEntry` object-identity/correlation model remain unchanged.
 
 Future changes should favor:
 
