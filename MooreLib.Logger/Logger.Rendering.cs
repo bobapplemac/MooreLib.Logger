@@ -28,6 +28,14 @@ public sealed partial class Logger
     private string FormatEndLine(EntryRecord entry, string message) =>
         FormatEntryContentLine(entry, terminal: true, message);
 
+    private string FormatTreeClosureLine(EntryRecord entry) =>
+        string.Concat(CreateAncestryColumns(entry, includeImmediateParent: true), "┴");
+
+    private string FormatTerminalChildContentLine(EntryRecord entry, bool terminal, string message) =>
+        message.Length == 0
+            ? string.Concat(CreateAncestryColumns(entry, includeImmediateParent: true, forceCompletedAncestor: entry.Parent), terminal ? "└" : "├")
+            : string.Concat(CreateAncestryColumns(entry, includeImmediateParent: true, forceCompletedAncestor: entry.Parent), terminal ? "└ " : "├ ", message);
+
     private string FormatEntryContentLine(EntryRecord entry, bool terminal, string message) =>
         message.Length == 0
             ? string.Concat(CreateAncestryColumns(entry, includeImmediateParent: true), terminal ? "└" : "├")
@@ -44,7 +52,10 @@ public sealed partial class Logger
     private string FormatStandaloneBranchPrefix(bool terminal, string message) =>
         string.Concat(terminal ? "└" : "├", message.Length == 0 ? string.Empty : " ");
 
-    private string CreateAncestryColumns(EntryRecord entry, bool includeImmediateParent)
+    private string CreateAncestryColumns(
+        EntryRecord entry,
+        bool includeImmediateParent,
+        EntryRecord? forceCompletedAncestor = null)
     {
         if (_options.EntryIndentSize == 0) return string.Empty;
 
@@ -62,7 +73,7 @@ public sealed partial class Logger
         for (var i = 0; i < count; i++)
         {
             var ancestor = ancestors[i];
-            if (ancestor.IsActive)
+            if (ancestor.IsActive && !ReferenceEquals(ancestor, forceCompletedAncestor))
             {
                 builder.Append('│');
                 if (_options.EntryIndentSize > 1)

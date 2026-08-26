@@ -60,27 +60,36 @@ public sealed class LoggerTests
     }
 
     [Fact]
-    public void InvalidExplicitEntryIdsThrowInsteadOfFallingBack()
+    public void CompletedExplicitEntryHandlesThrowInsteadOfFallingBack()
     {
         var events = new List<Logger.PhysicalEmission>();
         using var log = CreateLogger(events);
+        using var entry = log.BeginInfo("Entry");
+        log.CompleteEntry(entry, "Done");
+        var count = events.Count;
 
-        Assert.Throws<InvalidOperationException>(() => log.Write(123456, "Result"));
-        Assert.Throws<InvalidOperationException>(() => log.WriteLine(123456, "Result"));
-        Assert.Throws<InvalidOperationException>(() => log.CompleteEntry(123456));
-        Assert.Throws<InvalidOperationException>(() => log.CompleteEntryInline(123456, "Final"));
-        Assert.Empty(events);
+        Assert.Throws<InvalidOperationException>(() => log.Write(entry, "Result"));
+        Assert.Throws<InvalidOperationException>(() => log.WriteLine(entry, "Result"));
+        Assert.Throws<InvalidOperationException>(() => log.CompleteEntry(entry));
+        Assert.Throws<InvalidOperationException>(() => log.CompleteEntryInline(entry, "Final"));
+        Assert.Equal(count, events.Count);
     }
 
     [Fact]
-    public void InvalidExplicitParentIdsThrowForBeginsAndAttachedEvents()
+    public void ForeignEntryHandlesAreRejectedForExplicitOperations()
     {
-        var events = new List<Logger.PhysicalEmission>();
-        using var log = CreateLogger(events);
+        var firstEvents = new List<Logger.PhysicalEmission>();
+        var secondEvents = new List<Logger.PhysicalEmission>();
+        using var first = CreateLogger(firstEvents);
+        using var second = CreateLogger(secondEvents);
+        using var foreign = first.BeginInfo("Foreign");
 
-        Assert.Throws<InvalidOperationException>(() => log.BeginInfo(123456, "Child"));
-        Assert.Throws<InvalidOperationException>(() => log.Info(123456, "Attached"));
-        Assert.Empty(events);
+        Assert.Throws<ArgumentException>(() => second.BeginInfo(foreign, "Child"));
+        Assert.Throws<ArgumentException>(() => second.Info(foreign, "Attached"));
+        Assert.Throws<ArgumentException>(() => second.WriteLine(foreign, "Work"));
+        Assert.Throws<ArgumentException>(() => second.CompleteEntry(foreign, "Done"));
+        Assert.Throws<ArgumentException>(() => second.CompleteWithChild(foreign, LogLevel.Error, "Failure"));
+        Assert.Empty(secondEvents);
     }
 
     [Fact]
@@ -461,7 +470,7 @@ public sealed class LoggerTests
     }
 
     [Fact]
-    public void EmptyTreeMarkersDoNotGainTrailingSpaces()
+    public void EmptyTreeMarkersDoNotGainTrailingSpacesAndBlankCompletionUsesClosureMarker()
     {
         var events = new List<Logger.PhysicalEmission>();
         using var log = CreateLogger(events);
@@ -471,7 +480,7 @@ public sealed class LoggerTests
         log.CompleteEntry(string.Empty);
 
         Assert.Equal("├", events[1].Message);
-        Assert.Equal("└", events[2].Message);
+        Assert.Equal("┴", events[2].Message);
     }
 
     [Fact]
@@ -1488,6 +1497,146 @@ public sealed class LoggerTests
 
         var resume = Assert.Single(events.Where(e => e.Message.Contains("↳ 50%", StringComparison.Ordinal)));
         Assert.Equal("│ ↳ 50%", resume.Message);
+    }
+
+    [Fact]
+    public void MessageLessCompletionClosesVisibleTreeWithClosureMarker()
+    {
+        var events = new List<Logger.PhysicalEmission>();
+        using var log = CreateLogger(events);
+        using var parent = log.BeginInfo("Parent");
+        using var child = log.BeginInfo(parent, "Child");
+
+        log.CompleteEntry(child, "Child done");
+        log.CompleteEntry(parent);
+
+        var childBegin = Assert.Single(events.Where(e => e.Message == "Child"));
+        Assert.Equal("├ ", childBegin.Prefix);
+        Assert.Contains(events, e => e.Message == "│ └ Child done");
+        Assert.Equal("┴", events[^1].Message);
+    }
+
+    [Fact]
+    public void MessageLessCompletionWithoutVisibleTreeContentRemainsSilent()
+    {
+        var events = new List<Logger.PhysicalEmission>();
+        using var log = CreateLogger(events);
+        using var entry = log.BeginInfo("Root");
+
+        log.CompleteEntry(entry);
+
+        Assert.Single(events);
+        Assert.Equal("Root", events[0].Message);
+    }
+
+    [Fact]
+    public void MessageLessInlineCompletionDoesNotAppendTreeClosureMarker()
+    {
+        var events = new List<Logger.PhysicalEmission>();
+        using var log = CreateLogger(events);
+        using var entry = log.BeginInlineInfo("Working - ");
+
+        log.Write("done");
+        log.CompleteEntry(entry);
+
+        Assert.DoesNotContain(events, e => e.Message.Contains("┴", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void CompleteWithChildCreatesTerminalChildAndNestsMultilineDetail()
+    {
+        var events = new List<Logger.PhysicalEmission>();
+        using var log = CreateLogger(events);
+        using var parent = log.BeginInfo("Parent");
+
+        log.WriteLine(parent, "Step");
+        log.CompleteWithChild(
+            parent,
+            LogLevel.Error,
+            "EXCEPTION\nType: SocketException\nMessage: Connection refused");
+
+        Assert.Equal("Parent", events[0].Message);
+        Assert.Equal("├ Step", events[1].Message);
+        Assert.Contains(events, e => e.Message == "EXCEPTION" && e.Prefix == "└ ");
+        Assert.Contains(events, e => e.Message == "  ├ Type: SocketException");
+        Assert.Equal("  └ Message: Connection refused", events[^1].Message);
+        Assert.Throws<InvalidOperationException>(() => log.WriteLine(parent, "Too late"));
+    }
+
+    [Fact]
+    public void CompleteWithChildExceptionRendersExceptionDetailBeneathTerminalChild()
+    {
+        var events = new List<Logger.PhysicalEmission>();
+        using var log = CreateLogger(events);
+        using var parent = log.BeginInfo("Parent");
+
+        Exception exception;
+        try
+        {
+            throw new InvalidOperationException("failure");
+        }
+        catch (Exception ex)
+        {
+            exception = ex;
+        }
+
+        log.CompleteWithChild(parent, LogLevel.Error, "EXCEPTION", exception);
+
+        var heading = Assert.Single(events.Where(e => e.Message == "EXCEPTION"));
+        Assert.Equal("└ ", heading.Prefix);
+        Assert.Same(exception, heading.Exception);
+        Assert.Contains(events.Skip(1), e => e.Message.StartsWith("  ├ ", StringComparison.Ordinal));
+        Assert.StartsWith("  └ ", events[^1].Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PublicExplicitEntryApisUseLogEntryHandlesAndTerminalChildHasDistinctName()
+    {
+        var publicMethods = typeof(Logger).GetMethods(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public);
+
+        var entryTargetingNames = new HashSet<string>(StringComparer.Ordinal)
+        {
+            nameof(Logger.Write),
+            nameof(Logger.WriteLine),
+            nameof(Logger.WriteEvent),
+            nameof(Logger.Trace),
+            nameof(Logger.Debug),
+            nameof(Logger.Info),
+            nameof(Logger.Warn),
+            nameof(Logger.Error),
+            nameof(Logger.Fatal),
+            nameof(Logger.BeginEntry),
+            nameof(Logger.BeginInline),
+            nameof(Logger.BeginTrace),
+            nameof(Logger.BeginDebug),
+            nameof(Logger.BeginInfo),
+            nameof(Logger.BeginWarn),
+            nameof(Logger.BeginError),
+            nameof(Logger.BeginFatal),
+            nameof(Logger.BeginInlineTrace),
+            nameof(Logger.BeginInlineDebug),
+            nameof(Logger.BeginInlineInfo),
+            nameof(Logger.BeginInlineWarn),
+            nameof(Logger.BeginInlineError),
+            nameof(Logger.BeginInlineFatal),
+            nameof(Logger.CompleteEntry),
+            nameof(Logger.CompleteEntryInline),
+            nameof(Logger.CompleteWithChild)
+        };
+
+        Assert.DoesNotContain(
+            publicMethods.Where(m => entryTargetingNames.Contains(m.Name)),
+            m => m.GetParameters().Any(p => p.ParameterType == typeof(long)));
+
+        Assert.DoesNotContain(
+            publicMethods.Where(m => m.Name == nameof(Logger.CompleteEntry)),
+            m => m.GetParameters().Any(p => p.ParameterType == typeof(LogLevel)));
+
+        Assert.Contains(
+            publicMethods.Where(m => m.Name == nameof(Logger.CompleteWithChild)),
+            m => m.GetParameters().Length >= 3
+                 && m.GetParameters()[0].ParameterType == typeof(LogEntry)
+                 && m.GetParameters()[1].ParameterType == typeof(LogLevel));
     }
 
 }

@@ -98,20 +98,38 @@ public sealed partial class Logger
             {
                 var first = i == 0;
                 var last = i == lines.Length - 1;
-                var terminal = completeParent && last;
                 var logEvent = CreatePhysicalEvent(
                     level,
                     lines[i],
                     first ? exception : null,
                     first ? PhysicalOutputKind.HeaderLine : PhysicalOutputKind.PrefixedFragmentLine);
 
-                logEvent.PhysicalPrefix = FormatEntryBeginPrefix(child, terminal, lines[i]);
+                if (first)
+                {
+                    logEvent.PhysicalPrefix = FormatEntryBeginPrefix(child, terminal: completeParent, lines[i]);
+                }
+                else if (completeParent)
+                {
+                    logEvent.Message = FormatTerminalChildContentLine(child, terminal: last, lines[i]);
+                }
+                else
+                {
+                    logEvent.Message = FormatEntryContentLine(child, terminal: last, lines[i]);
+                }
+
                 ApplyProperties(logEvent, child.Properties);
                 ApplyReservedEntryProperties(
                     logEvent,
                     child,
-                    terminal ? EntryEventType.AttachedEnd : EntryEventType.Attached);
-                EmitPhysicalLocked(logEvent, child, level);
+                    completeParent && last ? EntryEventType.AttachedEnd : EntryEventType.Attached);
+                if (EmitPhysicalLocked(logEvent, child, level))
+                {
+                    parent.HasVisibleTreeContent = true;
+                    if (!first)
+                    {
+                        child.HasVisibleTreeContent = true;
+                    }
+                }
             }
 
             if (completeParent)
@@ -204,6 +222,10 @@ public sealed partial class Logger
                         {
                             entry.State = EntryLifecycleState.ActiveLineClosed;
                         }
+                        else if (entry.Parent is not null)
+                        {
+                            entry.Parent.HasVisibleTreeContent = true;
+                        }
                     }
                     catch
                     {
@@ -248,7 +270,17 @@ public sealed partial class Logger
                             logEvent,
                             entry,
                             firstLine ? EntryEventType.Begin : EntryEventType.Continuation);
-                        EmitPhysicalLocked(logEvent, entry, level);
+                        if (EmitPhysicalLocked(logEvent, entry, level))
+                        {
+                            if (firstLine && entry.Parent is not null)
+                            {
+                                entry.Parent.HasVisibleTreeContent = true;
+                            }
+                            if (!firstLine)
+                            {
+                                entry.HasVisibleTreeContent = true;
+                            }
+                        }
                     }
                 }
 
@@ -388,6 +420,10 @@ public sealed partial class Logger
             {
                 entry.State = previousState;
             }
+            else if (previousState == EntryLifecycleState.ActiveLineClosed)
+            {
+                entry.HasVisibleTreeContent = true;
+            }
         }
         catch
         {
@@ -452,7 +488,10 @@ public sealed partial class Logger
             ApplyProperties(line, entry.Properties);
             ApplyProperties(line, properties);
             ApplyReservedEntryProperties(line, entry, EntryEventType.Continuation);
-            EmitPhysicalLocked(line, entry, entry.Level);
+            if (EmitPhysicalLocked(line, entry, entry.Level))
+            {
+                entry.HasVisibleTreeContent = true;
+            }
         }
 
         entry.State = EntryLifecycleState.ActiveLineClosed;
@@ -565,6 +604,27 @@ public sealed partial class Logger
 
         if (!IsVisibleAtAnyDestinationLocked(entry.Level))
         {
+            CompleteRecordLocked(entry);
+            return;
+        }
+
+        var blankCompletion = exception is null && string.IsNullOrEmpty(message);
+        if (blankCompletion &&
+            entry.State is EntryLifecycleState.ActiveLineClosed or EntryLifecycleState.ActiveInterrupted)
+        {
+            if (entry.HasVisibleTreeContent)
+            {
+                var closure = CreatePhysicalEvent(
+                    entry.Level,
+                    FormatTreeClosureLine(entry),
+                    null,
+                    PhysicalOutputKind.FragmentLine);
+                ApplyProperties(closure, entry.Properties);
+                ApplyProperties(closure, properties);
+                ApplyReservedEntryProperties(closure, entry, EntryEventType.End);
+                EmitPhysicalLocked(closure, entry, entry.Level);
+            }
+
             CompleteRecordLocked(entry);
             return;
         }

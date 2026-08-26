@@ -27,7 +27,7 @@ which can render as a single progressively written physical line:
 
 The same physical fragments are written immediately to both console and file destinations. MooreLib.Logger is therefore useful when converting console-oriented applications to persistent logging without giving up natural `Write(...)` / `WriteLine(...)` style progress output.
 
-> **Current source version:** 1.15.0 (revision r15)  
+> **Current source version:** 1.16.0 (revision r16)  
 > **Target framework:** .NET 8  
 > **Logging backend:** NLog 6.2  
 > **Public namespace:** `MooreLib.Logging`  
@@ -41,6 +41,7 @@ The same physical fragments are written immediately to both console and file des
 - [Quick start](#quick-start)
 - [Core usage](#core-usage)
 - [Nested entries](#nested-entries)
+- [Terminal child completion](#terminal-child-completion)
 - [Structured properties](#structured-properties)
 - [Async and explicit entry context](#async-and-explicit-entry-context)
 - [Inline interruption and resume](#inline-interruption-and-resume)
@@ -304,7 +305,7 @@ Log.WriteLine("Configuration validated.");
 Log.WriteLine("Package downloaded.");
 ```
 
-`CompleteEntry(...)` completes the logical entry and, when appropriate, emits its terminal `└` line.
+`CompleteEntry(...)` completes the logical entry and, when terminal text is supplied, emits its normal terminal `└` line. In r16, a message-less completion of an entry that has already emitted visible tree content uses the bare closure marker `┴` so the streamed tree does not appear to be left hanging. Message-less completion of a simple entry or an already-open inline physical line does not add a marker.
 
 ---
 
@@ -421,6 +422,60 @@ Parent
 
 ---
 
+## Terminal child completion
+
+`CompleteWithChild(...)` creates one final one-shot child beneath an active parent and completes the parent as part of the same coordinated operation. Because MooreLib knows before emission that this child is terminal, its opening branch can use `└` immediately and any multiline detail can be rendered beneath it without buffering the complete tree.
+
+```csharp
+using var entry = Log.BeginInfo("Connecting to PLC.");
+Log.WriteLine(entry, "Attempting connection.");
+
+Log.CompleteWithChild(
+    entry,
+    LogLevel.Error,
+    "EXCEPTION" + Environment.NewLine +
+    "Type: System.Net.Sockets.SocketException" + Environment.NewLine +
+    "Message: Connection refused.");
+```
+
+Example output:
+
+```text
+Connecting to PLC.
+├ Attempting connection.
+└ EXCEPTION
+  ├ Type: System.Net.Sockets.SocketException
+  └ Message: Connection refused.
+```
+
+Earlier revisions exposed this terminal-child operation through a level-bearing `CompleteEntry(...)` overload. r16 removes that ambiguous overload. `CompleteWithChild(...)` is now the only API for terminal-child completion.
+
+This is different from `CompleteEntry(entry, message)`, which completes the supplied existing entry itself rather than creating a terminal child beneath it.
+
+### Message-less tree closure
+
+When an entry has emitted visible tree content but is deliberately completed without a terminal message, r16 emits `┴` to close that tree visually:
+
+```csharp
+using var parent = Log.BeginInfo("Parent");
+using var child = Log.BeginError(parent, "EXCEPTION");
+Log.WriteLine(child, "Type: SocketException");
+Log.CompleteEntry(child, "Message: Connection refused.");
+Log.CompleteEntry(parent);
+```
+
+```text
+Parent
+├ EXCEPTION
+│ ├ Type: SocketException
+│ └ Message: Connection refused.
+┴
+```
+
+`┴` therefore has one narrow meaning: **the logical entry ended here without a textual terminal line**. A normal textual completion continues to use `└ text`.
+
+---
+
 ## Parent-aware one-shot events
 
 A child event can also be attached without creating a child entry that must later be completed:
@@ -493,7 +548,7 @@ Log.WriteLine("Async work complete.");
 Log.CompleteEntry("Done.");
 ```
 
-For work that must target a specific entry explicitly, use the returned `LogEntry` handle or its numeric ID:
+For work that must target a specific entry explicitly, use the returned `LogEntry` handle:
 
 ```csharp
 using var entry = Log.BeginInfo("Processing.");
@@ -501,11 +556,11 @@ using var entry = Log.BeginInfo("Processing.");
 Log.WriteLine(entry, "Explicitly attached line.");
 ```
 
-`LogEntry` has an implicit conversion to `long`, so APIs accepting an explicit entry ID can use the handle directly.
+`LogEntry.Id` remains available as read-only diagnostic/metadata identity, but public explicit-entry APIs use `LogEntry` itself rather than numeric IDs.
 
-Concurrent execution flows can establish their own child entries and then continue using implicit `Write(...)` / `WriteLine(...)` calls without passing an ID on every call. Each `ExecutionContext` retains its own ambient entry. Code that deliberately suppresses `ExecutionContext` flow, or otherwise crosses a boundary where ambient context should not be assumed, should use the explicit `LogEntry`/ID overloads.
+Concurrent execution flows can establish their own child entries and then continue using implicit `Write(...)` / `WriteLine(...)` calls without passing an ID on every call. Each `ExecutionContext` retains its own ambient entry. Code that deliberately suppresses `ExecutionContext` flow, or otherwise crosses a boundary where ambient context should not be assumed, should use the explicit `LogEntry` overloads.
 
-Explicit entry references are intentionally strict. An invalid or completed explicit ID is a programming error and throws rather than silently becoming an unrelated standalone log event.
+Explicit entry references are intentionally strict. A completed handle, or a handle created by a different `Logger` instance, is a programming error and throws rather than silently becoming an unrelated standalone log event.
 
 Ambient operations are more forgiving where documented; for example, line-oriented operations may fall back to standalone output when no ambient entry exists.
 
@@ -874,7 +929,9 @@ The following rules are intentional parts of the public behavior:
 14. Structured MooreLib metadata uses the reserved `MooreLib.Logger.*` namespace.
 15. Nested output is rendered incrementally from entry ancestry; complete-tree buffering or future-sibling lookahead is not required.
 16. Active ancestors render vertical continuation columns; completed ancestors do not.
-17. Destination exclusivity is process-local and applies only among participating MooreLib logger instances.
+17. A message-less completion emits `┴` only when visible tree content needs an explicit visual closure; simple/inline completion does not gain a synthetic line.
+18. `CompleteWithChild(...)` creates a known-terminal child and completes its parent in one coordinated operation.
+19. Destination exclusivity is process-local and applies only among participating MooreLib logger instances.
 
 ---
 
@@ -906,7 +963,7 @@ BeginError(...)
 BeginFatal(...)
 ```
 
-Parent-aware overloads accept an active parent entry ID/handle.
+Parent-aware overloads accept an active `LogEntry` parent handle.
 
 ## Begin inline entries
 
@@ -924,10 +981,10 @@ BeginInlineFatal(...)
 
 ```csharp
 Write(message, ...)
-Write(entryId, message, ...)
+Write(entry, message, ...)
 
 WriteLine(message, ...)
-WriteLine(entryId, message, ...)
+WriteLine(entry, message, ...)
 ```
 
 ## Completion
@@ -935,11 +992,11 @@ WriteLine(entryId, message, ...)
 ```csharp
 CompleteEntry()
 CompleteEntry(message, ...)
-CompleteEntry(entryId, ...)
-CompleteEntry(parentEntryId, level, message, ...)
+CompleteEntry(entry, ...)
+CompleteWithChild(parent, level, message, ...)
 
 CompleteEntryInline(message, ...)
-CompleteEntryInline(entryId, message, ...)
+CompleteEntryInline(entry, message, ...)
 ```
 
 ## File destination
@@ -1054,11 +1111,13 @@ The current test project covers the state machine and integration-sensitive beha
 - multiple competing writers;
 - actual Task/thread concurrency;
 - `AsyncLocal` flow and restoration;
-- strict invalid entry IDs;
+- strict completed/foreign `LogEntry` handle validation;
 - loose parent/child lifetime behavior;
 - ancestry-aware nested tree rendering;
 - completed-ancestor best-effort rendering;
 - nested inline interruption/resume rendering;
+- message-less `┴` tree closure;
+- terminal-child `CompleteWithChild(...)` rendering and distinct completion semantics;
 - structured-property inheritance and override;
 - reserved-property rejection;
 - exception retention/rendering;
@@ -1161,6 +1220,7 @@ MooreLib.Logger uses a simple `Major.Revision.0` versioning scheme.
 1.13.0  -> revision r13
 1.14.0  -> revision r14
 1.15.0  -> revision r15
+1.16.0  -> revision r16 (breaking public API cleanup)
 ```
 
 The **revision** component is globally monotonic and increments for every released code change, including small fixes. The **major** component changes only for an intentionally breaking public API generation. The patch component is reserved and currently remains `0`.
@@ -1191,7 +1251,7 @@ SPDX-License-Identifier: MIT
 
 # Status
 
-Version **1.15.0** corresponds to **r15**. The architecture remains substantially complete for its intended purpose: NLog-backed application logging with logical entries, structured properties, ancestry-aware nested tree rendering, and console-style progressive output. r15 refines visible nested rendering without changing the public logging model or requiring complete-tree buffering. Real application usage should drive future revisions rather than speculative feature expansion.
+Version **2.16.0** corresponds to **r16**. The architecture remains substantially complete for its intended purpose: NLog-backed application logging with logical entries, structured properties, ancestry-aware nested tree rendering, and console-style progressive output. r16 adds explicit terminal-child completion through `CompleteWithChild(...)`, the `┴` marker for message-less visual tree closure, and a deliberate breaking cleanup that makes `LogEntry` the sole public explicit-entry reference type. Numeric IDs remain internal/diagnostic, the implicit `LogEntry`-to-`long` conversion is removed, and the ambiguous level-bearing `CompleteEntry(...)` terminal-child overload is removed. Real application usage should drive future revisions rather than speculative feature expansion.
 
 Future changes should favor:
 

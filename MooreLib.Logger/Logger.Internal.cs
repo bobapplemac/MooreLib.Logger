@@ -115,6 +115,7 @@ public sealed partial class Logger
         public LogProperty[] Properties { get; }
         public int Depth { get; }
         public EntryLifecycleState State { get; set; }
+        public bool HasVisibleTreeContent { get; set; }
 
         public bool IsActive => State != EntryLifecycleState.Completed;
         public bool OwnsOpenLine => State is EntryLifecycleState.ActiveLineOpen or EntryLifecycleState.CompletingLineOpen;

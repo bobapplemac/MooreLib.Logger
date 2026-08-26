@@ -74,82 +74,82 @@ public sealed partial class Logger
     public void Fatal(string message, Exception exception, params LogProperty[] properties) => WriteEvent(LogLevel.Fatal, message, exception, properties);
 
     /// <summary>Writes a Trace-level one-shot nested child beneath an active parent.</summary>
-    /// <param name="parentEntryId">Identifier of the active parent entry.</param>
+    /// <param name="parentEntry">Active parent entry handle.</param>
     /// <param name="message">Child message text.</param>
     /// <param name="properties">Structured properties merged over inherited parent properties.</param>
-    public void Trace(long parentEntryId, string message, params LogProperty[] properties) => WriteEvent(parentEntryId, LogLevel.Trace, message, properties);
+    public void Trace(LogEntry parentEntry, string message, params LogProperty[] properties) => WriteEvent(parentEntry, LogLevel.Trace, message, properties);
 
     /// <summary>Writes a Debug-level one-shot nested child beneath an active parent.</summary>
-    /// <param name="parentEntryId">Identifier of the active parent entry.</param>
+    /// <param name="parentEntry">Active parent entry handle.</param>
     /// <param name="message">Child message text.</param>
     /// <param name="properties">Structured properties merged over inherited parent properties.</param>
-    public void Debug(long parentEntryId, string message, params LogProperty[] properties) => WriteEvent(parentEntryId, LogLevel.Debug, message, properties);
+    public void Debug(LogEntry parentEntry, string message, params LogProperty[] properties) => WriteEvent(parentEntry, LogLevel.Debug, message, properties);
 
     /// <summary>Writes a Info-level one-shot nested child beneath an active parent.</summary>
-    /// <param name="parentEntryId">Identifier of the active parent entry.</param>
+    /// <param name="parentEntry">Active parent entry handle.</param>
     /// <param name="message">Child message text.</param>
     /// <param name="properties">Structured properties merged over inherited parent properties.</param>
-    public void Info(long parentEntryId, string message, params LogProperty[] properties) => WriteEvent(parentEntryId, LogLevel.Info, message, properties);
+    public void Info(LogEntry parentEntry, string message, params LogProperty[] properties) => WriteEvent(parentEntry, LogLevel.Info, message, properties);
 
     /// <summary>Writes a Warning-level one-shot nested child beneath an active parent.</summary>
-    /// <param name="parentEntryId">Identifier of the active parent entry.</param>
+    /// <param name="parentEntry">Active parent entry handle.</param>
     /// <param name="message">Child message text.</param>
     /// <param name="properties">Structured properties merged over inherited parent properties.</param>
-    public void Warn(long parentEntryId, string message, params LogProperty[] properties) => WriteEvent(parentEntryId, LogLevel.Warning, message, properties);
+    public void Warn(LogEntry parentEntry, string message, params LogProperty[] properties) => WriteEvent(parentEntry, LogLevel.Warning, message, properties);
 
     /// <summary>Writes a Error-level one-shot nested child beneath an active parent.</summary>
-    /// <param name="parentEntryId">Identifier of the active parent entry.</param>
+    /// <param name="parentEntry">Active parent entry handle.</param>
     /// <param name="message">Child message text.</param>
     /// <param name="properties">Structured properties merged over inherited parent properties.</param>
-    public void Error(long parentEntryId, string message, params LogProperty[] properties) => WriteEvent(parentEntryId, LogLevel.Error, message, properties);
+    public void Error(LogEntry parentEntry, string message, params LogProperty[] properties) => WriteEvent(parentEntry, LogLevel.Error, message, properties);
 
     /// <summary>Writes a Fatal-level one-shot nested child beneath an active parent.</summary>
-    /// <param name="parentEntryId">Identifier of the active parent entry.</param>
+    /// <param name="parentEntry">Active parent entry handle.</param>
     /// <param name="message">Child message text.</param>
     /// <param name="properties">Structured properties merged over inherited parent properties.</param>
-    public void Fatal(long parentEntryId, string message, params LogProperty[] properties) => WriteEvent(parentEntryId, LogLevel.Fatal, message, properties);
+    public void Fatal(LogEntry parentEntry, string message, params LogProperty[] properties) => WriteEvent(parentEntry, LogLevel.Fatal, message, properties);
 
     /// <summary>Writes a Trace-level one-shot nested child with an attached exception.</summary>
-    /// <param name="parentEntryId">Identifier of the active parent entry.</param>
+    /// <param name="parentEntry">Active parent entry handle.</param>
     /// <param name="message">Child message text rendered before the exception continuation lines.</param>
     /// <param name="exception">Exception retained on the first NLog event and also rendered through MooreLib continuation formatting.</param>
     /// <param name="properties">Structured properties merged over inherited parent properties.</param>
-    public void Trace(long parentEntryId, string message, Exception exception, params LogProperty[] properties) => WriteEvent(parentEntryId, LogLevel.Trace, message, exception, properties);
+    public void Trace(LogEntry parentEntry, string message, Exception exception, params LogProperty[] properties) => WriteEvent(parentEntry, LogLevel.Trace, message, exception, properties);
 
     /// <summary>Writes a Debug-level one-shot nested child with an attached exception.</summary>
-    /// <param name="parentEntryId">Identifier of the active parent entry.</param>
+    /// <param name="parentEntry">Active parent entry handle.</param>
     /// <param name="message">Child message text rendered before the exception continuation lines.</param>
     /// <param name="exception">Exception retained on the first NLog event and also rendered through MooreLib continuation formatting.</param>
     /// <param name="properties">Structured properties merged over inherited parent properties.</param>
-    public void Debug(long parentEntryId, string message, Exception exception, params LogProperty[] properties) => WriteEvent(parentEntryId, LogLevel.Debug, message, exception, properties);
+    public void Debug(LogEntry parentEntry, string message, Exception exception, params LogProperty[] properties) => WriteEvent(parentEntry, LogLevel.Debug, message, exception, properties);
 
     /// <summary>Writes a Info-level one-shot nested child with an attached exception.</summary>
-    /// <param name="parentEntryId">Identifier of the active parent entry.</param>
+    /// <param name="parentEntry">Active parent entry handle.</param>
     /// <param name="message">Child message text rendered before the exception continuation lines.</param>
     /// <param name="exception">Exception retained on the first NLog event and also rendered through MooreLib continuation formatting.</param>
     /// <param name="properties">Structured properties merged over inherited parent properties.</param>
-    public void Info(long parentEntryId, string message, Exception exception, params LogProperty[] properties) => WriteEvent(parentEntryId, LogLevel.Info, message, exception, properties);
+    public void Info(LogEntry parentEntry, string message, Exception exception, params LogProperty[] properties) => WriteEvent(parentEntry, LogLevel.Info, message, exception, properties);
 
     /// <summary>Writes a Warning-level one-shot nested child with an attached exception.</summary>
-    /// <param name="parentEntryId">Identifier of the active parent entry.</param>
+    /// <param name="parentEntry">Active parent entry handle.</param>
     /// <param name="message">Child message text rendered before the exception continuation lines.</param>
     /// <param name="exception">Exception retained on the first NLog event and also rendered through MooreLib continuation formatting.</param>
     /// <param name="properties">Structured properties merged over inherited parent properties.</param>
-    public void Warn(long parentEntryId, string message, Exception exception, params LogProperty[] properties) => WriteEvent(parentEntryId, LogLevel.Warning, message, exception, properties);
+    public void Warn(LogEntry parentEntry, string message, Exception exception, params LogProperty[] properties) => WriteEvent(parentEntry, LogLevel.Warning, message, exception, properties);
 
     /// <summary>Writes a Error-level one-shot nested child with an attached exception.</summary>
-    /// <param name="parentEntryId">Identifier of the active parent entry.</param>
+    /// <param name="parentEntry">Active parent entry handle.</param>
     /// <param name="message">Child message text rendered before the exception continuation lines.</param>
     /// <param name="exception">Exception retained on the first NLog event and also rendered through MooreLib continuation formatting.</param>
     /// <param name="properties">Structured properties merged over inherited parent properties.</param>
-    public void Error(long parentEntryId, string message, Exception exception, params LogProperty[] properties) => WriteEvent(parentEntryId, LogLevel.Error, message, exception, properties);
+    public void Error(LogEntry parentEntry, string message, Exception exception, params LogProperty[] properties) => WriteEvent(parentEntry, LogLevel.Error, message, exception, properties);
 
     /// <summary>Writes a Fatal-level one-shot nested child with an attached exception.</summary>
-    /// <param name="parentEntryId">Identifier of the active parent entry.</param>
+    /// <param name="parentEntry">Active parent entry handle.</param>
     /// <param name="message">Child message text rendered before the exception continuation lines.</param>
     /// <param name="exception">Exception retained on the first NLog event and also rendered through MooreLib continuation formatting.</param>
     /// <param name="properties">Structured properties merged over inherited parent properties.</param>
-    public void Fatal(long parentEntryId, string message, Exception exception, params LogProperty[] properties) => WriteEvent(parentEntryId, LogLevel.Fatal, message, exception, properties);
+    public void Fatal(LogEntry parentEntry, string message, Exception exception, params LogProperty[] properties) => WriteEvent(parentEntry, LogLevel.Fatal, message, exception, properties);
 
     /// <summary>Writes a one-shot event at the supplied level.</summary>
     /// <param name="level">Event severity.</param>
@@ -170,23 +170,23 @@ public sealed partial class Logger
     }
 
     /// <summary>Writes a one-shot nested child beneath the supplied active parent.</summary>
-    /// <param name="parentEntryId">Identifier of the active parent entry.</param>
+    /// <param name="parentEntry">Active parent entry handle.</param>
     /// <param name="level">Child event severity.</param>
     /// <param name="message">Child message text.</param>
     /// <param name="properties">Structured properties merged over inherited parent properties.</param>
-    public void WriteEvent(long parentEntryId, LogLevel level, string message, params LogProperty[] properties) =>
-        WriteAttachedEventCore(parentEntryId, level, message, exception: null, properties, completeParent: false);
+    public void WriteEvent(LogEntry parentEntry, LogLevel level, string message, params LogProperty[] properties) =>
+        WriteAttachedEventCore(GetEntryId(parentEntry), level, message, exception: null, properties, completeParent: false);
 
     /// <summary>Writes a one-shot nested child with an attached exception beneath the supplied active parent.</summary>
-    /// <param name="parentEntryId">Identifier of the active parent entry.</param>
+    /// <param name="parentEntry">Active parent entry handle.</param>
     /// <param name="level">Child event severity.</param>
     /// <param name="message">Child message text.</param>
     /// <param name="exception">Exception retained on the first NLog event.</param>
     /// <param name="properties">Structured properties merged over inherited parent properties.</param>
-    public void WriteEvent(long parentEntryId, LogLevel level, string message, Exception exception, params LogProperty[] properties)
+    public void WriteEvent(LogEntry parentEntry, LogLevel level, string message, Exception exception, params LogProperty[] properties)
     {
         ArgumentNullException.ThrowIfNull(exception);
-        WriteAttachedEventCore(parentEntryId, level, message, exception, properties, completeParent: false);
+        WriteAttachedEventCore(GetEntryId(parentEntry), level, message, exception, properties, completeParent: false);
     }
 
     /// <summary>Writes exactly one unformatted blank physical line to every enabled destination.</summary>

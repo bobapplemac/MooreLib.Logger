@@ -39,6 +39,8 @@ namespace MooreLib.Logging.Demo
             RunMultilineDemo(log);
             RunInlineDemo(log);
             RunNestedDemo(log);
+            RunTreeClosureDemo(log);
+            RunCompleteWithChildDemo(log);
             RunInterruptionDemo(log);
             RunExceptionDemo(log);
 
@@ -133,6 +135,36 @@ namespace MooreLib.Logging.Demo
 
                 log.CompleteEntry(parent, "PLC clock update complete.");
 
+                log.WriteBlankLine();
+            }
+
+            static void RunTreeClosureDemo(Logger log)
+            {
+                using var parent = log.BeginInfo("Message-less tree completion demo.");
+
+                using (var child = log.BeginInfo(parent, "Nested operation."))
+                {
+                    log.WriteLine(child, "Work complete.");
+                    log.CompleteEntry(child, "Nested operation complete.");
+                }
+
+                // Because the parent has visible tree content but no terminal message, r16
+                // emits a bare tree-closure marker (┴) instead of leaving the branch hanging.
+                log.CompleteEntry(parent);
+                log.WriteBlankLine();
+            }
+
+            static void RunCompleteWithChildDemo(Logger log)
+            {
+                using var parent = log.BeginInfo("Terminal-child completion demo.");
+                log.WriteLine(parent, "Attempting connection.");
+
+                var detail =
+                    "EXCEPTION" + Environment.NewLine +
+                    "Type: System.Net.Sockets.SocketException" + Environment.NewLine +
+                    "Message: Connection refused.";
+
+                log.CompleteWithChild(parent, LogLevel.Error, detail);
                 log.WriteBlankLine();
             }
 

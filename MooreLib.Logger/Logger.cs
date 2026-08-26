@@ -3,7 +3,7 @@
 //
 // ------------------------------------------------------------------------------------------
 // File:        Logger.cs
-// Revision:    r15
+// Revision:    r16
 // Modified:    2026-08-26
 // Author:      Andrew J. Moore
 // License:     MIT License
@@ -14,10 +14,11 @@
 //              ambient context, structured properties, and deterministic entry handles while
 //              NLog remains responsible for physical targets and file/archive mechanics.
 //
-//              Revision r15 replaces depth-only nested indentation with ancestry-aware tree rendering.
-//              Active ancestors draw vertical continuation columns, while completed ancestors render
-//              blank columns so loose-lifetime child entries remain readable without implying that a
-//              completed ancestor is still structurally open.
+//              Revision r16 adds explicit terminal-child completion through CompleteWithChild(...) and
+//              a visible tree-closure marker (┴) for message-less completion of entries whose tree has
+//              already emitted visible child/continuation content. It also makes LogEntry the sole public
+//              explicit-entry reference type, removes numeric entry-targeting overloads and the implicit
+//              LogEntry-to-long conversion, and removes the ambiguous level-bearing CompleteEntry overload.
 // ------------------------------------------------------------------------------------------
 
 #nullable enable
