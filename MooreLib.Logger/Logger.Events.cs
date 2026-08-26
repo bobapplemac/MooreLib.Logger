@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Andrew J. Moore
 
-using System;
-
 namespace MooreLib.Logging;
 
 public sealed partial class Logger

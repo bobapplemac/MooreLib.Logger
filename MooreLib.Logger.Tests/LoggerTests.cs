@@ -1,11 +1,4 @@
-using MooreLib;
-using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
-using Xunit;
 using MooreLib.Logging;
-
-namespace MooreLib.Logging.Tests;
 
 public sealed class LoggerTests
 {

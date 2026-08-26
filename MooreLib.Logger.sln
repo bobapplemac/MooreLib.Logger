@@ -16,6 +16,17 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MooreLib.Logger.Tests", "Mo
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MooreLib.Logger.Demo", "MooreLib.Logger.Demo\MooreLib.Logger.Demo.csproj", "{3E142278-C3D4-4976-A117-78A24D6FD92D}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SourceBundler", "Portable\SourceBundler\SourceBundler.csproj", "{3FA2A184-B85C-4135-B8C7-51AA25955687}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Portable", "Portable", "{02EA681E-C7D8-13C7-8484-4AC65E1B71E8}"
+	ProjectSection(SolutionItems) = preProject
+		Portable\Directory.Build.props = Portable\Directory.Build.props
+	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MooreLib.Logger.Portable.Tests", "Portable\MooreLib.Logger.Portable.Tests\MooreLib.Logger.Portable.Tests.csproj", "{C527A4D1-681B-42BB-9A7B-F51D7088278F}"
+EndProject
+Project("{13B669BE-BB05-4DDF-9536-439F39A36129}") = "MooreLib.Logger.Portable", "Portable\MooreLib.Logger.Portable.msbuildproj", "{337CABA9-3F7B-A240-1E80-27D1634031D9}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -34,9 +45,26 @@ Global
 		{3E142278-C3D4-4976-A117-78A24D6FD92D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{3E142278-C3D4-4976-A117-78A24D6FD92D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{3E142278-C3D4-4976-A117-78A24D6FD92D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3FA2A184-B85C-4135-B8C7-51AA25955687}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3FA2A184-B85C-4135-B8C7-51AA25955687}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3FA2A184-B85C-4135-B8C7-51AA25955687}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3FA2A184-B85C-4135-B8C7-51AA25955687}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C527A4D1-681B-42BB-9A7B-F51D7088278F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C527A4D1-681B-42BB-9A7B-F51D7088278F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C527A4D1-681B-42BB-9A7B-F51D7088278F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C527A4D1-681B-42BB-9A7B-F51D7088278F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{337CABA9-3F7B-A240-1E80-27D1634031D9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{337CABA9-3F7B-A240-1E80-27D1634031D9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{337CABA9-3F7B-A240-1E80-27D1634031D9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{337CABA9-3F7B-A240-1E80-27D1634031D9}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{3FA2A184-B85C-4135-B8C7-51AA25955687} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+		{C527A4D1-681B-42BB-9A7B-F51D7088278F} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+		{337CABA9-3F7B-A240-1E80-27D1634031D9} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {73D79876-B97F-43F6-8BA9-843FFF18F1F6}

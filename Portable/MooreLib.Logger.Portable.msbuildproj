@@ -1,0 +1,30 @@
+﻿<Project Sdk="Microsoft.Build.NoTargets/3.0.4">
+
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<IncludeBuildOutput>false</IncludeBuildOutput>
+
+		<SourceProject>$(MSBuildThisFileDirectory)..\MooreLib.Logger\MooreLib.Logger.csproj</SourceProject>
+		<SourceBundlerProject>$(MSBuildThisFileDirectory)SourceBundler\SourceBundler.csproj</SourceBundlerProject>
+		<PortableTestsProject>$(MSBuildThisFileDirectory)MooreLib.Logger.Portable.Tests\MooreLib.Logger.Portable.Tests.csproj</PortableTestsProject>
+		<PortableSource>$(MSBuildThisFileDirectory)artifacts\MooreLib.Logger.cs</PortableSource>
+	</PropertyGroup>
+
+	<Target Name="BundlePortableSource">
+		<MSBuild Projects="$(SourceBundlerProject)"
+				 Targets="Build"
+				 Properties="Configuration=$(Configuration)" />
+
+		<Exec Command='dotnet run --project &quot;$(SourceBundlerProject)&quot; --configuration &quot;$(Configuration)&quot; --no-build -- &quot;$(SourceProject)&quot; &quot;$(PortableSource)&quot;' />
+	</Target>
+
+	<Target Name="ValidatePortableSource"
+			DependsOnTargets="BundlePortableSource">
+		<Exec Command='dotnet test &quot;$(PortableTestsProject)&quot; --configuration &quot;$(Configuration)&quot;' />
+	</Target>
+
+	<Target Name="BuildPortable"
+			BeforeTargets="Build"
+			DependsOnTargets="ValidatePortableSource" />
+
+</Project>

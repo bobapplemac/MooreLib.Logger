@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Andrew J. Moore
 
-using System;
-using System.Collections.Generic;
-using System.Threading;
 using NLogEventInfo = NLog.LogEventInfo;
 
 namespace MooreLib.Logging;

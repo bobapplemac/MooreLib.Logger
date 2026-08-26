@@ -3,7 +3,7 @@
 //
 // ------------------------------------------------------------------------------------------
 // File:        Logger.cs
-// Revision:    r19
+// Revision:    r20
 // Modified:    2026-08-26
 // Author:      Andrew J. Moore
 // License:     MIT License
@@ -21,11 +21,9 @@
 
 #nullable enable
 
-using System;
 using System.Globalization;
 using System.Runtime.ExceptionServices;
 using NLogFactory = NLog.LogFactory;
-using NLogLogger = NLog.Logger;
 
 namespace MooreLib.Logging;
 

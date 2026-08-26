@@ -1,0 +1,12 @@
+<Project>
+
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'MooreLib.Logger.Portable'">
+    <!-- Keep all build/restore output inside the generated artifacts directory. -->
+    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)artifacts\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
+    <IntermediateOutputPath>$(BaseIntermediateOutputPath)</IntermediateOutputPath>
+    <BaseOutputPath>$(MSBuildThisFileDirectory)artifacts\bin\$(MSBuildProjectName)\</BaseOutputPath>
+    <MSBuildProjectExtensionsPath>$(BaseIntermediateOutputPath)</MSBuildProjectExtensionsPath>
+    <RestoreOutputPath>$(BaseIntermediateOutputPath)</RestoreOutputPath>
+  </PropertyGroup>
+
+</Project>

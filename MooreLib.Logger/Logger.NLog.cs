@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Andrew J. Moore
 
-using System;
-using System.Globalization;
-using System.IO;
 using System.Text;
 using NLog.Config;
 using NLog.Layouts;

@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Andrew J. Moore
 
-using System;
-using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
 
 namespace MooreLib.Logging;
 
