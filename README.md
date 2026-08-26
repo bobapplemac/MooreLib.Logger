@@ -423,7 +423,7 @@ using var entry = Log.BeginInfo(
 
 Child entries inherit their parent's properties. A property supplied by the child overrides an inherited value with the same name.
 
-MooreLib reserves the `MooreLib.Logging.*` property namespace for internal entry metadata. Caller-supplied properties in that namespace are rejected rather than silently overwritten.
+MooreLib reserves the `MooreLib.Logger.*` property namespace for internal entry metadata. Caller-supplied properties in that namespace are rejected rather than silently overwritten.
 
 Reserved metadata includes information equivalent to:
 
