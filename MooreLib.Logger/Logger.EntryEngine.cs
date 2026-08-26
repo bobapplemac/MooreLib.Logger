@@ -46,7 +46,7 @@ public sealed partial class Logger
 
                 if (!first)
                 {
-                    logEvent.PhysicalPrefix = FormatBranchPrefix(0, last, lines[i]);
+                    logEvent.PhysicalPrefix = FormatStandaloneBranchPrefix(last, lines[i]);
                 }
 
                 ApplyProperties(logEvent, properties);
@@ -80,10 +80,9 @@ public sealed partial class Logger
 
             var child = new EntryRecord(
                 NextEntryIdLocked(),
-                parent.Id,
+                parent,
                 level,
-                MergeProperties(parent.Properties, properties),
-                parent.Depth + 1);
+                MergeProperties(parent.Properties, properties));
 
             if (!IsVisibleAtAnyDestinationLocked(level))
             {
@@ -106,7 +105,7 @@ public sealed partial class Logger
                     first ? exception : null,
                     first ? PhysicalOutputKind.HeaderLine : PhysicalOutputKind.PrefixedFragmentLine);
 
-                logEvent.PhysicalPrefix = FormatBranchPrefix(child.Depth, terminal, lines[i]);
+                logEvent.PhysicalPrefix = FormatEntryBeginPrefix(child, terminal, lines[i]);
                 ApplyProperties(logEvent, child.Properties);
                 ApplyReservedEntryProperties(
                     logEvent,
@@ -167,10 +166,9 @@ public sealed partial class Logger
 
             var entry = new EntryRecord(
                 NextEntryIdLocked(),
-                parent?.Id,
+                parent,
                 level,
-                MergeProperties(parent?.Properties, properties),
-                parent?.Depth + 1 ?? 0);
+                MergeProperties(parent?.Properties, properties));
 
             _activeEntries.Add(entry.Id, entry);
             _currentEntry.Value = new EntryContext(entry, parentContext);
@@ -190,11 +188,11 @@ public sealed partial class Logger
 
                     if (entry.ParentEntryId.HasValue)
                     {
-                        first.PhysicalPrefix = FormatBranchPrefix(entry.Depth, terminal: false, text);
+                        first.PhysicalPrefix = FormatEntryBeginPrefix(entry, terminal: false, text);
                     }
                     else
                     {
-                        first.Message = FormatRootBegin(entry, text);
+                        first.Message = FormatRootBegin(text);
                     }
 
                     ApplyProperties(first, entry.Properties);
@@ -229,7 +227,7 @@ public sealed partial class Logger
                         var logEvent = CreatePhysicalEvent(
                             level,
                             firstLine && !entry.ParentEntryId.HasValue
-                                ? FormatRootBegin(entry, lines[i])
+                                ? FormatRootBegin(lines[i])
                                 : lines[i],
                             firstLine ? exception : null,
                             firstLine
@@ -238,11 +236,11 @@ public sealed partial class Logger
 
                         if (firstLine && entry.ParentEntryId.HasValue)
                         {
-                            logEvent.PhysicalPrefix = FormatBranchPrefix(entry.Depth, terminal: false, lines[i]);
+                            logEvent.PhysicalPrefix = FormatEntryBeginPrefix(entry, terminal: false, lines[i]);
                         }
                         else if (!firstLine)
                         {
-                            logEvent.Message = FormatContinuationLine(entry.Depth, lines[i]);
+                            logEvent.Message = FormatContinuationLine(entry, lines[i]);
                         }
 
                         ApplyProperties(logEvent, entry.Properties);
@@ -333,7 +331,7 @@ public sealed partial class Logger
             case EntryLifecycleState.ActiveInterrupted:
                 logEvent = CreatePhysicalEvent(
                     entry.Level,
-                    FormatInlineResume(entry.Depth, text),
+                    FormatInlineResume(entry, text),
                     exception: null,
                     PhysicalOutputKind.HeaderLineOpen);
                 eventType = EntryEventType.Resume;
@@ -343,7 +341,7 @@ public sealed partial class Logger
             case EntryLifecycleState.CompletingInterrupted:
                 logEvent = CreatePhysicalEvent(
                     entry.Level,
-                    FormatInlineResume(entry.Depth, text),
+                    FormatInlineResume(entry, text),
                     exception: null,
                     PhysicalOutputKind.HeaderLineOpen);
                 eventType = EntryEventType.Resume;
@@ -353,7 +351,7 @@ public sealed partial class Logger
             case EntryLifecycleState.CompletingLinePending:
                 logEvent = CreatePhysicalEvent(
                     entry.Level,
-                    FormatEndLine(entry.Depth, text),
+                    FormatEndLine(entry, text),
                     exception: null,
                     PhysicalOutputKind.FragmentLineOpen);
                 eventType = EntryEventType.EndInline;
@@ -363,7 +361,7 @@ public sealed partial class Logger
             case EntryLifecycleState.ActiveLineClosed:
                 logEvent = CreatePhysicalEvent(
                     entry.Level,
-                    FormatContinuationLine(entry.Depth, text),
+                    FormatContinuationLine(entry, text),
                     exception: null,
                     PhysicalOutputKind.FragmentLineOpen);
                 eventType = EntryEventType.Continuation;
@@ -428,7 +426,7 @@ public sealed partial class Logger
         {
             var resume = CreatePhysicalEvent(
                 entry.Level,
-                FormatInlineResume(entry.Depth, lines[0]),
+                FormatInlineResume(entry, lines[0]),
                 exception: null,
                 PhysicalOutputKind.HeaderLine);
             ApplyProperties(resume, entry.Properties);
@@ -448,7 +446,7 @@ public sealed partial class Logger
         {
             var line = CreatePhysicalEvent(
                 entry.Level,
-                FormatContinuationLine(entry.Depth, lines[lineIndex]),
+                FormatContinuationLine(entry, lines[lineIndex]),
                 exception: null,
                 PhysicalOutputKind.FragmentLine);
             ApplyProperties(line, entry.Properties);
@@ -497,7 +495,7 @@ public sealed partial class Logger
 
             var terminal = CreatePhysicalEvent(
                 entry.Level,
-                FormatEndLine(entry.Depth, normalized),
+                FormatEndLine(entry, normalized),
                 exception: null,
                 PhysicalOutputKind.FragmentLineOpen);
             ApplyProperties(terminal, entry.Properties);
@@ -580,7 +578,7 @@ public sealed partial class Logger
                 var last = i == lines.Length - 1;
                 var physical = CreatePhysicalEvent(
                     entry.Level,
-                    last ? FormatEndLine(entry.Depth, lines[i]) : FormatContinuationLine(entry.Depth, lines[i]),
+                    last ? FormatEndLine(entry, lines[i]) : FormatContinuationLine(entry, lines[i]),
                     null,
                     PhysicalOutputKind.FragmentLine);
                 ApplyProperties(physical, entry.Properties);
@@ -613,7 +611,7 @@ public sealed partial class Logger
                 var last = i == lines.Length - 1;
                 var continuation = CreatePhysicalEvent(
                     entry.Level,
-                    FormatInlineResume(entry.Depth, lines[i]),
+                    FormatInlineResume(entry, lines[i]),
                     null,
                     PhysicalOutputKind.HeaderLine);
                 ApplyProperties(continuation, entry.Properties);
@@ -636,7 +634,7 @@ public sealed partial class Logger
                 var last = i == lines.Length - 1;
                 var continuation = CreatePhysicalEvent(
                     entry.Level,
-                    FormatInlineResume(entry.Depth, lines[i]),
+                    FormatInlineResume(entry, lines[i]),
                     null,
                     PhysicalOutputKind.HeaderLine);
                 ApplyProperties(continuation, entry.Properties);
@@ -675,7 +673,7 @@ public sealed partial class Logger
                 var last = i == lines.Length - 1;
                 var continuation = CreatePhysicalEvent(
                     entry.Level,
-                    last ? FormatEndLine(entry.Depth, lines[i]) : FormatContinuationLine(entry.Depth, lines[i]),
+                    last ? FormatEndLine(entry, lines[i]) : FormatContinuationLine(entry, lines[i]),
                     exceptionAttached ? null : exception,
                     PhysicalOutputKind.FragmentLine);
                 exceptionAttached = exceptionAttached || exception is not null;
@@ -694,7 +692,7 @@ public sealed partial class Logger
             {
                 var resume = CreatePhysicalEvent(
                     entry.Level,
-                    FormatInlineResume(entry.Depth, lines[0]),
+                    FormatInlineResume(entry, lines[0]),
                     exception,
                     PhysicalOutputKind.HeaderLine);
                 exceptionAttached = exception is not null;
@@ -711,7 +709,7 @@ public sealed partial class Logger
                     var last = i == lines.Length - 1;
                     var continuation = CreatePhysicalEvent(
                         entry.Level,
-                        last ? FormatEndLine(entry.Depth, lines[i]) : FormatContinuationLine(entry.Depth, lines[i]),
+                        last ? FormatEndLine(entry, lines[i]) : FormatContinuationLine(entry, lines[i]),
                         exceptionAttached ? null : exception,
                         PhysicalOutputKind.FragmentLine);
                     exceptionAttached = exceptionAttached || exception is not null;
@@ -732,7 +730,7 @@ public sealed partial class Logger
                 var last = i == lines.Length - 1;
                 var physical = CreatePhysicalEvent(
                     entry.Level,
-                    last ? FormatEndLine(entry.Depth, lines[i]) : FormatContinuationLine(entry.Depth, lines[i]),
+                    last ? FormatEndLine(entry, lines[i]) : FormatContinuationLine(entry, lines[i]),
                     exceptionAttached ? null : exception,
                     PhysicalOutputKind.FragmentLine);
                 exceptionAttached = exceptionAttached || exception is not null;
@@ -786,7 +784,7 @@ public sealed partial class Logger
                 lines[i],
                 null,
                 first ? PhysicalOutputKind.NormalLine : PhysicalOutputKind.PrefixedFragmentLine);
-            if (!first) logEvent.PhysicalPrefix = FormatBranchPrefix(0, last, lines[i]);
+            if (!first) logEvent.PhysicalPrefix = FormatStandaloneBranchPrefix(last, lines[i]);
             ApplyProperties(logEvent, properties);
             EmitPhysicalLocked(logEvent, null, LogLevel.Info);
         }

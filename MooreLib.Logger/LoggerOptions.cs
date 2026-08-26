@@ -72,7 +72,7 @@ public sealed record LoggerOptions
     /// <summary>Prefix used when a previously interrupted inline entry resumes on a new physical line.</summary>
     public string InlineResumePrefix { get; init; } = "↳ ";
 
-    /// <summary>Number of spaces added for each nested logical-entry depth.</summary>
+    /// <summary>Width, in characters, reserved for each nested tree ancestry column.</summary>
     public int EntryIndentSize { get; init; } = 2;
 
     /// <summary>Maximum time allowed for NLog targets to flush during logger disposal.</summary>

@@ -14,32 +14,70 @@ namespace MooreLib.Logging;
 
 public sealed partial class Logger
 {
-    private string FormatRootBegin(EntryRecord entry, string message) =>
-        string.Concat(CreateIndent(entry.Depth), message);
+    private static string FormatRootBegin(string message) => message;
 
-    private string FormatContinuationLine(int depth, string message) =>
+    private string FormatEntryBeginPrefix(EntryRecord entry, bool terminal, string message) =>
+        string.Concat(
+            CreateAncestryColumns(entry, includeImmediateParent: false),
+            terminal ? "└" : "├",
+            message.Length == 0 ? string.Empty : " ");
+
+    private string FormatContinuationLine(EntryRecord entry, string message) =>
+        FormatEntryContentLine(entry, terminal: false, message);
+
+    private string FormatEndLine(EntryRecord entry, string message) =>
+        FormatEntryContentLine(entry, terminal: true, message);
+
+    private string FormatEntryContentLine(EntryRecord entry, bool terminal, string message) =>
         message.Length == 0
-            ? string.Concat(CreateIndent(depth), "├")
-            : string.Concat(CreateIndent(depth), "├ ", message);
+            ? string.Concat(CreateAncestryColumns(entry, includeImmediateParent: true), terminal ? "└" : "├")
+            : string.Concat(CreateAncestryColumns(entry, includeImmediateParent: true), terminal ? "└ " : "├ ", message);
 
-    private string FormatEndLine(int depth, string message) =>
-        message.Length == 0
-            ? string.Concat(CreateIndent(depth), "└")
-            : string.Concat(CreateIndent(depth), "└ ", message);
-
-    private string FormatInlineResume(int depth, string message)
+    private string FormatInlineResume(EntryRecord entry, string message)
     {
         var prefix = message.Length == 0
             ? _options.InlineResumePrefix.TrimEnd()
             : _options.InlineResumePrefix;
-        return string.Concat(CreateIndent(depth), prefix, message);
+        return string.Concat(CreateAncestryColumns(entry, includeImmediateParent: true), prefix, message);
     }
 
-    private string FormatBranchPrefix(int depth, bool terminal, string message) =>
-        string.Concat(CreateIndent(depth), terminal ? "└" : "├", message.Length == 0 ? string.Empty : " ");
+    private string FormatStandaloneBranchPrefix(bool terminal, string message) =>
+        string.Concat(terminal ? "└" : "├", message.Length == 0 ? string.Empty : " ");
 
-    private string CreateIndent(int depth) =>
-        new(' ', checked(depth * _options.EntryIndentSize));
+    private string CreateAncestryColumns(EntryRecord entry, bool includeImmediateParent)
+    {
+        if (_options.EntryIndentSize == 0) return string.Empty;
+
+        var ancestors = new List<EntryRecord>();
+        for (var current = entry.Parent; current is not null; current = current.Parent)
+        {
+            ancestors.Add(current);
+        }
+
+        ancestors.Reverse();
+        var count = includeImmediateParent ? ancestors.Count : Math.Max(0, ancestors.Count - 1);
+        if (count == 0) return string.Empty;
+
+        var builder = new StringBuilder(checked(count * _options.EntryIndentSize));
+        for (var i = 0; i < count; i++)
+        {
+            var ancestor = ancestors[i];
+            if (ancestor.IsActive)
+            {
+                builder.Append('│');
+                if (_options.EntryIndentSize > 1)
+                {
+                    builder.Append(' ', _options.EntryIndentSize - 1);
+                }
+            }
+            else
+            {
+                builder.Append(' ', _options.EntryIndentSize);
+            }
+        }
+
+        return builder.ToString();
+    }
 
     private static string NormalizeInlineMessage(string value) => value.ReplaceLineEndings(" ");
 

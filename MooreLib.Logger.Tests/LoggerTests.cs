@@ -1386,4 +1386,108 @@ public sealed class LoggerTests
         Assert.All(bEvents, e => Assert.Equal(entryB.Id, e.EntryId));
     }
 
+    [Fact]
+    public void NestedEntriesRenderAsAncestryAwareTree()
+    {
+        var events = new List<Logger.PhysicalEmission>();
+        using var log = CreateLogger(events);
+        using var parent = log.BeginInfo("Updating PLC clock.");
+
+        log.WriteLine("Connected.");
+
+        using (var identity = log.BeginInfo(parent, "Reading controller identity."))
+        {
+            log.WriteLine(identity, "Product: ControlLogix");
+            log.WriteLine(identity, "Program: MainProgram");
+            log.CompleteEntry(identity, "Identity complete.");
+        }
+
+        using (var clock = log.BeginInfo(parent, "Synchronizing clock."))
+        {
+            log.WriteLine(clock, "Current drift: 1.42 seconds.");
+            log.WriteLine(clock, "Writing controller time.");
+            log.CompleteEntry(clock, "Clock synchronized.");
+        }
+
+        log.CompleteEntry(parent, "PLC clock update complete.");
+
+        Assert.Equal("Updating PLC clock.", events[0].Message);
+        Assert.Equal("├ Connected.", events[1].Message);
+
+        var identityBegin = Assert.Single(events.Where(e => e.Message == "Reading controller identity."));
+        Assert.Equal("├ ", identityBegin.Prefix);
+        Assert.Contains(events, e => e.Message == "│ ├ Product: ControlLogix");
+        Assert.Contains(events, e => e.Message == "│ ├ Program: MainProgram");
+        Assert.Contains(events, e => e.Message == "│ └ Identity complete.");
+
+        var clockBegin = Assert.Single(events.Where(e => e.Message == "Synchronizing clock."));
+        Assert.Equal("├ ", clockBegin.Prefix);
+        Assert.Contains(events, e => e.Message == "│ ├ Current drift: 1.42 seconds.");
+        Assert.Contains(events, e => e.Message == "│ ├ Writing controller time.");
+        Assert.Contains(events, e => e.Message == "│ └ Clock synchronized.");
+
+        Assert.Equal("└ PLC clock update complete.", events[^1].Message);
+    }
+
+    [Fact]
+    public void DeeplyNestedEntriesRenderOneActiveVerticalColumnPerAncestor()
+    {
+        var events = new List<Logger.PhysicalEmission>();
+        using var log = CreateLogger(events);
+        using var root = log.BeginInfo("Root");
+        using var child = log.BeginInfo(root, "Child");
+        using var grandchild = log.BeginInfo(child, "Grandchild");
+
+        log.WriteLine(grandchild, "Work");
+        log.CompleteEntry(grandchild, "Grandchild done");
+        log.CompleteEntry(child, "Child done");
+        log.CompleteEntry(root, "Root done");
+
+        var childBegin = Assert.Single(events.Where(e => e.Message == "Child"));
+        Assert.Equal("├ ", childBegin.Prefix);
+
+        var grandchildBegin = Assert.Single(events.Where(e => e.Message == "Grandchild"));
+        Assert.Equal("│ ├ ", grandchildBegin.Prefix);
+
+        Assert.Contains(events, e => e.Message == "│ │ ├ Work");
+        Assert.Contains(events, e => e.Message == "│ │ └ Grandchild done");
+        Assert.Contains(events, e => e.Message == "│ └ Child done");
+        Assert.Equal("└ Root done", events[^1].Message);
+    }
+
+    [Fact]
+    public void CompletedAncestorDoesNotRenderVerticalContinuationForSurvivingChild()
+    {
+        var events = new List<Logger.PhysicalEmission>();
+        using var log = CreateLogger(events);
+        using var parent = log.BeginInfo("Parent");
+        using var child = log.BeginInfo(parent, "Child");
+
+        log.CompleteEntry(parent, "Parent done");
+        log.WriteLine(child, "Still active");
+        log.CompleteEntry(child, "Child done");
+
+        Assert.Contains(events, e => e.Message == "└ Parent done");
+        Assert.Contains(events, e => e.Message == "  ├ Still active");
+        Assert.Equal("  └ Child done", events[^1].Message);
+    }
+
+    [Fact]
+    public void NestedInterruptedInlineEntryResumesWithinItsAncestryColumn()
+    {
+        var events = new List<Logger.PhysicalEmission>();
+        using var log = CreateLogger(events);
+        using var parent = log.BeginInfo("Parent");
+        using var child = log.BeginInlineInfo(parent, "Child - ");
+
+        log.Write(child, "25% ");
+        log.Warn("Interrupt");
+        log.Write(child, "50%");
+        log.CompleteEntry(child);
+        log.CompleteEntry(parent, "Parent done");
+
+        var resume = Assert.Single(events.Where(e => e.Message.Contains("↳ 50%", StringComparison.Ordinal)));
+        Assert.Equal("│ ↳ 50%", resume.Message);
+    }
+
 }

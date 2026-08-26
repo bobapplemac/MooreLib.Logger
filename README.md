@@ -27,7 +27,7 @@ which can render as a single progressively written physical line:
 
 The same physical fragments are written immediately to both console and file destinations. MooreLib.Logger is therefore useful when converting console-oriented applications to persistent logging without giving up natural `Write(...)` / `WriteLine(...)` style progress output.
 
-> **Current source version:** 1.13.0 (revision r13)  
+> **Current source version:** 1.15.0 (revision r15)  
 > **Target framework:** .NET 8  
 > **Logging backend:** NLog 6.2  
 > **Public namespace:** `MooreLib.Logging`  
@@ -88,7 +88,7 @@ MooreLib.Logger adds a semantic layer above NLog for this use case. It provides:
 - logical multi-line entries;
 - incremental partial-line `Write(...)` output;
 - `WriteLine(...)` continuation lines;
-- nested parent/child entries with tree-style rendering;
+- nested parent/child entries with ancestry-aware tree rendering;
 - automatic interruption and resume of open inline lines;
 - `AsyncLocal` ambient entry context across `async` / `await`;
 - explicit entry references for cross-context work;
@@ -368,16 +368,56 @@ using var parent = Log.BeginInfo("Updating PLC clock.");
 
 Log.WriteLine("Connected.");
 
-using var child = Log.BeginInfo(parent, "Reading controller identity.");
-Log.WriteLine("Product: ControlLogix");
-Log.CompleteEntry("Identity complete.");
+using (var identity = Log.BeginInfo(parent, "Reading controller identity."))
+{
+    Log.WriteLine("Product: ControlLogix");
+    Log.WriteLine("Program: MainProgram");
+    Log.CompleteEntry(identity, "Identity complete.");
+}
 
-Log.CompleteEntry(parent, "Clock update complete.");
+using (var clock = Log.BeginInfo(parent, "Synchronizing clock."))
+{
+    Log.WriteLine("Current drift: 1.42 seconds.");
+    Log.WriteLine("Writing controller time.");
+    Log.CompleteEntry(clock, "Clock synchronized.");
+}
+
+Log.CompleteEntry(parent, "PLC clock update complete.");
 ```
+
+Nested entries use ancestry-aware tree rendering:
+
+```text
+2026-08-26 11:25:07.604 [INFO] - Updating PLC clock.
+├ Connected.
+├ 2026-08-26 11:25:07.604 [INFO] - Reading controller identity.
+│ ├ Product: ControlLogix
+│ ├ Program: MainProgram
+│ └ Identity complete.
+├ 2026-08-26 11:25:07.604 [INFO] - Synchronizing clock.
+│ ├ Current drift: 1.42 seconds.
+│ ├ Writing controller time.
+│ └ Clock synchronized.
+└ PLC clock update complete.
+```
+
+A child entry's opening line is rendered as a node in its parent's tree. Physical lines emitted by that child then render beneath it with one ancestry column per active ancestor. Deeper descendants repeat the same pattern using additional `│ ` columns.
+
+Tree prefixes are produced incrementally as each physical line is emitted. MooreLib does not buffer a complete logical tree or require future-sibling lookahead.
 
 Nested entries retain their own ID, parent ID, depth, and inherited structured properties.
 
 A child that has already been created may continue after its parent is completed. MooreLib intentionally uses **loose parent/child lifetime semantics**: valid requested output is preferred over enforcing strict LIFO tree lifetimes. A completed parent, however, cannot accept a newly created child.
+
+When a surviving descendant writes after an ancestor has completed, MooreLib does **not** draw a vertical continuation through that completed ancestor. Rendering remains best-effort while preserving the requested output:
+
+```text
+Parent
+├ Child
+└ Parent complete
+  ├ Child is still active.
+  └ Child complete.
+```
 
 ---
 
@@ -704,7 +744,7 @@ A suppressed event that is invisible to **all enabled destinations** has no phys
 | `FileLayout` | `null` | Optional complete NLog layout override for header-bearing file lines. |
 | `FileFragmentLayout` | `${message}` | NLog layout used for file fragments. |
 | `InlineResumePrefix` | `↳ ` | Prefix used when an interrupted inline entry resumes. |
-| `EntryIndentSize` | `2` | Spaces added per nested entry depth. |
+| `EntryIndentSize` | `2` | Width of each nested tree ancestry column. With the default value, active ancestor columns render as `│ ` and completed ancestor columns as equivalent whitespace. |
 | `DisposeFlushTimeout` | 5 seconds | Maximum NLog flush wait during deterministic disposal. |
 | `ArchivePolicy` | 10 MiB / 5 archives | File archive/retention strategy. |
 
@@ -831,8 +871,10 @@ The following rules are intentional parts of the public behavior:
 11. A physical line is kept together across file rollover whenever reasonably possible.
 12. A logical multi-line entry may span archive files.
 13. Dynamic destination/filter changes are prospective; suppressed history is never replayed.
-14. Structured MooreLib metadata uses the reserved `MooreLib.Logging.*` namespace.
-15. Destination exclusivity is process-local and applies only among participating MooreLib logger instances.
+14. Structured MooreLib metadata uses the reserved `MooreLib.Logger.*` namespace.
+15. Nested output is rendered incrementally from entry ancestry; complete-tree buffering or future-sibling lookahead is not required.
+16. Active ancestors render vertical continuation columns; completed ancestors do not.
+17. Destination exclusivity is process-local and applies only among participating MooreLib logger instances.
 
 ---
 
@@ -1014,6 +1056,9 @@ The current test project covers the state machine and integration-sensitive beha
 - `AsyncLocal` flow and restoration;
 - strict invalid entry IDs;
 - loose parent/child lifetime behavior;
+- ancestry-aware nested tree rendering;
+- completed-ancestor best-effort rendering;
+- nested inline interruption/resume rendering;
 - structured-property inheritance and override;
 - reserved-property rejection;
 - exception retention/rendering;
@@ -1041,7 +1086,7 @@ MooreLib.Logger deliberately stays focused.
 - structured properties;
 - exceptions;
 - logical entries;
-- nested/tree presentation;
+- ancestry-aware nested/tree presentation;
 - progressive partial-line output;
 - async ambient entry context;
 - optional live file logging;
@@ -1079,7 +1124,15 @@ Log.WriteLine(child, "Child is still active.");
 Log.CompleteEntry(child);
 ```
 
-The resulting tree may be aesthetically unusual, but the already-created child remains valid.
+The resulting tree may be aesthetically unusual, but the already-created child remains valid. MooreLib intentionally stops drawing a vertical continuation column through an ancestor once that ancestor has completed:
+
+```text
+Parent
+├ Child
+└ Parent complete
+  ├ Child is still active.
+  └ Child complete.
+```
 
 By contrast, this is intentionally rejected:
 
@@ -1138,7 +1191,7 @@ SPDX-License-Identifier: MIT
 
 # Status
 
-Version **1.13.0** corresponds to the stabilized **r13** architecture. The feature set is considered substantially complete for its intended purpose: NLog-backed application logging with logical entries and console-style progressive output. Real application usage should drive future revisions rather than speculative feature expansion.
+Version **1.15.0** corresponds to **r15**. The architecture remains substantially complete for its intended purpose: NLog-backed application logging with logical entries, structured properties, ancestry-aware nested tree rendering, and console-style progressive output. r15 refines visible nested rendering without changing the public logging model or requiring complete-tree buffering. Real application usage should drive future revisions rather than speculative feature expansion.
 
 Future changes should favor:
 

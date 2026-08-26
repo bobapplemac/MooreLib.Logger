@@ -3,7 +3,7 @@
 //
 // ------------------------------------------------------------------------------------------
 // File:        Logger.cs
-// Revision:    r14
+// Revision:    r15
 // Modified:    2026-08-26
 // Author:      Andrew J. Moore
 // License:     MIT License
@@ -14,10 +14,10 @@
 //              ambient context, structured properties, and deterministic entry handles while
 //              NLog remains responsible for physical targets and file/archive mechanics.
 //
-//              Revision r13 is a focused stabilization of the r12 architecture. It seals Logger, makes
-//              runtime file configuration transactional, formalizes physical newline preservation,
-//              makes WriteBlankLine() an unconditional physical-stream command, and preserves
-//              prospective-only destination/filter visibility semantics.
+//              Revision r15 replaces depth-only nested indentation with ancestry-aware tree rendering.
+//              Active ancestors draw vertical continuation columns, while completed ancestors render
+//              blank columns so loose-lifetime child entries remain readable without implying that a
+//              completed ancestor is still structurally open.
 // ------------------------------------------------------------------------------------------
 
 #nullable enable

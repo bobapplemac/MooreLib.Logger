@@ -95,20 +95,21 @@ public sealed partial class Logger
     {
         public EntryRecord(
             long id,
-            long? parentEntryId,
+            EntryRecord? parent,
             LogLevel level,
-            LogProperty[] properties,
-            int depth)
+            LogProperty[] properties)
         {
             Id = id;
-            ParentEntryId = parentEntryId;
+            Parent = parent;
+            ParentEntryId = parent?.Id;
             Level = level;
             Properties = properties;
-            Depth = depth;
+            Depth = parent is null ? 0 : checked(parent.Depth + 1);
             State = EntryLifecycleState.ActiveLineClosed;
         }
 
         public long Id { get; }
+        public EntryRecord? Parent { get; }
         public long? ParentEntryId { get; }
         public LogLevel Level { get; }
         public LogProperty[] Properties { get; }
