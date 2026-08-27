@@ -199,7 +199,7 @@ namespace MooreLib.Logging
                 {
                     if (visible)
                     {
-                        var text = NormalizeInlineMessage(message);
+                        var text = NormalizeSingleLineMessage(message);
                         var first = CreatePhysicalEvent(
                             level,
                             text,
@@ -329,11 +329,42 @@ namespace MooreLib.Logging
 
                 if (!endLine)
                 {
-                    WriteInlineFragmentLocked(entry, NormalizeInlineMessage(message), properties);
+                    WriteInlineTextLocked(entry, message, properties);
                     return;
                 }
 
                 WriteClosedPhysicalLinesLocked(entry, SplitPhysicalLines(message), properties);
+            }
+        }
+
+        private void WriteInlineTextLocked(LogEntry entry, string text, LogProperty[] properties)
+        {
+            var lines = SplitPhysicalLines(text);
+
+            if (lines.Length == 1)
+            {
+                WriteInlineFragmentLocked(entry, lines[0], properties);
+                return;
+            }
+
+            if (entry.IsCompleting)
+            {
+                throw new InvalidOperationException(
+                    "Write(...) cannot terminate the physical line after CompleteEntryInline(). Continue the terminal line without a line separator, then call CompleteEntry().");
+            }
+
+            // Every element except the final one is terminated by an explicit line separator
+            // in the caller's text. Emit those as closed physical lines. SplitPhysicalLines()
+            // retains a final empty element when the text ends with CR, LF, or CRLF, so that
+            // element is intentionally not reopened as an empty inline line.
+            var closedLines = new string[lines.Length - 1];
+            Array.Copy(lines, closedLines, closedLines.Length);
+            WriteClosedPhysicalLinesLocked(entry, closedLines, properties);
+
+            var finalFragment = lines[lines.Length - 1];
+            if (finalFragment.Length != 0)
+            {
+                WriteInlineFragmentLocked(entry, finalFragment, properties);
             }
         }
 
@@ -527,7 +558,7 @@ namespace MooreLib.Logging
                         "CompleteEntryInline can only start a new terminal line. End the current physical line with WriteLine() first.");
                 }
 
-                var normalized = NormalizeInlineMessage(message);
+                var normalized = NormalizeSingleLineMessage(message);
                 if (!IsVisibleAtAnyDestinationLocked(entry.Level))
                 {
                     entry.State = EntryLifecycleState.CompletingLinePending;

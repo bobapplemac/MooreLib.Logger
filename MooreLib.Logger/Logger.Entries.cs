@@ -202,13 +202,13 @@ namespace MooreLib.Logging
         /// <returns>A disposable handle representing the newly created logical entry. The handle is used for explicit entry targeting.</returns>
         public LogEntry BeginInlineFatal(LogEntry parentEntry, string message, params LogProperty[] properties) => BeginInline(parentEntry, LogLevel.Fatal, message, properties);
 
-        /// <summary>Writes text to the ambient logical entry without terminating its current physical line; without an ambient entry it falls back to an Info event.</summary>
+        /// <summary>Writes text to the ambient logical entry using stream-style semantics; embedded line separators terminate physical lines, and without an ambient entry it falls back to an Info event.</summary>
         /// <param name="message">Message fragment to write.</param>
         /// <param name="properties">Structured properties attached to this physical event.</param>
         public void Write(string message, params LogProperty[] properties) =>
             WriteCore(explicitEntry: null, useExplicitEntry: false, message, endLine: false, properties);
 
-        /// <summary>Writes text to an explicitly identified active logical entry without terminating its current physical line.</summary>
+        /// <summary>Writes text to an explicitly identified active logical entry using stream-style semantics; embedded line separators terminate physical lines.</summary>
         /// <param name="entry">Active entry handle.</param>
         /// <param name="message">Message fragment to write.</param>
         /// <param name="properties">Structured properties attached to this physical event.</param>

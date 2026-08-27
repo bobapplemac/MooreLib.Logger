@@ -29,7 +29,7 @@ which can render as a single progressively written physical line:
 
 The same physical fragments are written immediately to each enabled destination. Console and file output can be enabled independently, so MooreLib.Logger is useful for interactive applications, file-only services, or applications that want both without giving up natural `Write(...)` / `WriteLine(...)` style progress output.
 
-> **Current source version:** 1.21.0 (revision r21)  
+> **Current source version:** 1.22.0 (revision r22)  
 > **Target frameworks:** .NET 8 and .NET Framework 4.6.2  
 > **Logging backend:** NLog 6.2  
 > **Public namespace:** `MooreLib.Logging`  
@@ -184,10 +184,10 @@ using (var Log = new Logger())
 
 The portable file is **generated output, not canonical source**. Do not edit it directly. Changes should be made to the normal source files under `MooreLib.Logger/` and then rebundled. The generated header identifies the source version, repository, license, and NLog dependency so the file remains understandable when used independently of the repository.
 
-The source version embedded in the generated header is read directly from the library project's `FileVersion`. For r21, the generated file therefore reports:
+The source version embedded in the generated header is read directly from the library project's `FileVersion`. For r22, the generated file therefore reports:
 
 ```text
-Source version: 1.21.0.0
+Source version: 1.22.0.0
 ```
 
 The generator is `Portable/SourceBundler`. It uses Roslyn to preserve C# structure while combining the canonical source files, hoisting compilation-unit directives, normalizing file-scoped namespaces where necessary, and preserving source formatting as closely as possible. The generated `Portable/artifacts/` directory is intentionally excluded from source control.
@@ -725,7 +725,7 @@ Representative behavior:
 
 Equivalent CR and CRLF sequences behave the same way.
 
-`Write(...)` is intentionally different because it represents a single open physical line. Embedded newline sequences passed to `Write(...)` are normalized to spaces.
+`Write(...)` follows normal stream-style semantics: embedded CR, LF, and CRLF sequences terminate the current physical line, while text after the final separator continues on a new open physical line. A trailing line separator therefore leaves no line open. For example, `Write("a\nb")` writes and closes `a`, then leaves `b` open; `Write("a\n")` is equivalent to `WriteLine("a")`; and `Write(Environment.NewLine)` is equivalent to `WriteLine()`.
 
 ---
 
@@ -1303,7 +1303,7 @@ The main `MooreLib.Logger.Tests` project covers the state machine and integratio
 - exception retention/rendering;
 - filtering combinations;
 - unconditional blank-line output;
-- CR/LF/CRLF and trailing-newline preservation;
+- CR/LF/CRLF and trailing-newline preservation, including stream-style `Write(...)` behavior;
 - file enable/disable during active inline output;
 - transactional configuration rollback;
 - transactional file configuration and rollback;
@@ -1408,6 +1408,7 @@ MooreLib.Logger uses a simple `Major.Revision.0` versioning scheme.
 1.19.0  -> revision r19
 1.20.0  -> revision r20
 1.21.0  -> revision r21
+1.22.0  -> revision r22
 ```
 
 The **revision** component is globally monotonic and increments for every released code change, including small fixes. The patch component is reserved and currently remains `0`.
@@ -1438,7 +1439,9 @@ SPDX-License-Identifier: MIT
 
 # Status
 
-Version **1.21.0** corresponds to **r21**. The runtime logging architecture remains substantially complete for its intended purpose: NLog-backed application logging with logical entries, structured properties, ancestry-aware nested tree rendering, and console-style progressive output.
+Version **1.22.0** corresponds to **r22**. The runtime logging architecture remains substantially complete for its intended purpose: NLog-backed application logging with logical entries, structured properties, ancestry-aware nested tree rendering, and console-style progressive output.
+
+r22 gives `Write(...)` normal stream-style newline semantics. Embedded CR, LF, and CRLF sequences terminate physical lines; text following the final separator remains as the new open inline fragment, and a trailing separator makes `Write(...)` equivalent to the corresponding `WriteLine(...)` operation.
 
 r21 adds .NET Framework compatibility while retaining the existing .NET 8 target. The canonical library now multi-targets `net8.0` and `net462` from the same source base. The implementation was deliberately backported to a C# 7.3-compatible common syntax baseline rather than requiring a newer compiler for the .NET Framework target.
 

@@ -90,7 +90,7 @@ namespace MooreLib.Logging
             return builder.ToString();
         }
 
-        private static string NormalizeInlineMessage(string value)
+        private static string NormalizeSingleLineMessage(string value)
         {
             return value
                 .Replace("\r\n", " ")
@@ -104,8 +104,7 @@ namespace MooreLib.Logging
         /// </summary>
         /// <remarks>
         /// Examples: <c>""</c> becomes one empty line; <c>"a\n"</c> becomes <c>["a", ""]</c>;
-        /// <c>"\n\n"</c> becomes three empty lines. Inline Write operations intentionally use
-        /// <see cref="NormalizeInlineMessage(string)"/> instead because they have single-line semantics.
+        /// <c>"\n\n"</c> becomes three empty lines.
         /// </remarks>
         internal static string[] SplitPhysicalLines(string value)
         {

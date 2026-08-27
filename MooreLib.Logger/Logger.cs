@@ -3,8 +3,8 @@
 //
 // ------------------------------------------------------------------------------------------
 // File:        Logger.cs
-// Revision:    r21
-// Modified:    2026-08-26
+// Revision:    r22
+// Modified:    2026-08-27
 // Author:      Andrew J. Moore
 // License:     MIT License
 // Source:      https://github.com/bobapplemac/MooreLib.Logger

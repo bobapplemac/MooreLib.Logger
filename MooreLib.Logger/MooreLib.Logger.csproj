@@ -11,7 +11,7 @@
     <Copyright>Copyright 2026 Andrew J. Moore</Copyright>
     <RepositoryUrl>https://github.com/bobapplemac/MooreLib.Logger</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <FileVersion>1.21.0.0</FileVersion>
+    <FileVersion>1.22.0.0</FileVersion>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
     <Title>MooreLib.Logger</Title>
