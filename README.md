@@ -112,8 +112,7 @@ MooreLib.Logger is **not intended to replace NLog**. NLog remains responsible fo
 
 ## Requirements
 
-- .NET 8.0 or later, or
-- .NET Framework 4.6.2 or later
+- .NET 8.0 or later, or .NET Framework 4.6.2 or later
 - NLog 6.2.0 or later
 
 MooreLib.Logger is multi-targeted from one canonical source base:
