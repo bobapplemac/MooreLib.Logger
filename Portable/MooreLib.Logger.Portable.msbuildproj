@@ -8,6 +8,7 @@
 		<SourceBundlerProject>$(MSBuildThisFileDirectory)SourceBundler\SourceBundler.csproj</SourceBundlerProject>
 		<PortableTestsProject>$(MSBuildThisFileDirectory)MooreLib.Logger.Portable.Tests\MooreLib.Logger.Portable.Tests.csproj</PortableTestsProject>
 		<PortableSource>$(MSBuildThisFileDirectory)artifacts\MooreLib.Logger.cs</PortableSource>
+		<PortableLicense>$(MSBuildThisFileDirectory)artifacts\LICENSE-MooreLib.Logger.txt</PortableLicense>
 	</PropertyGroup>
 
 	<Target Name="BundlePortableSource">
@@ -26,5 +27,20 @@
 	<Target Name="BuildPortable"
 			BeforeTargets="Build"
 			DependsOnTargets="ValidatePortableSource" />
+
+	<Target Name="CopyLicenseToPortableArtifacts" AfterTargets="Build">
+		<MakeDir Directories="$(MSBuildThisFileDirectory)artifacts" />
+
+		<Copy
+			SourceFiles="$(MSBuildThisFileDirectory)..\LICENSE"
+			DestinationFiles="$(PortableLicense)"
+			SkipUnchangedFiles="true" />
+	</Target>
+
+	<Target Name="CleanPortableArtifacts"
+        BeforeTargets="Clean">
+		<Delete Files="$(PortableSource)" />
+		<Delete Files="$(PortableLicense)" />
+	</Target>
 
 </Project>

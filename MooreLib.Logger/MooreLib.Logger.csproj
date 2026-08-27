@@ -36,4 +36,21 @@
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net462" Version="1.0.3" PrivateAssets="All" />
   </ItemGroup>
 
+	<Target Name="CopyLicenseFilesToOutput" AfterTargets="Build" Condition="'$(TargetFramework)' != ''">
+    <Copy
+      SourceFiles="$(MSBuildProjectDirectory)\..\LICENSE"
+      DestinationFiles="$(TargetDir)LICENSE-MooreLib.Logger.txt"
+      SkipUnchangedFiles="true" />
+
+    <Copy
+      SourceFiles="$(MSBuildProjectDirectory)\..\THIRD-PARTY-NOTICES\LICENSE-NLog.txt"
+      DestinationFiles="$(TargetDir)LICENSE-NLog.txt"
+      SkipUnchangedFiles="true" />
+  </Target>
+
+	<Target Name="CleanLicenseFilesFromOutput" BeforeTargets="CoreClean" Condition="'$(TargetFramework)' != ''">
+    <Delete Files="$(TargetDir)LICENSE-MooreLib.Logger.txt" />
+    <Delete Files="$(TargetDir)LICENSE-NLog.txt" />
+  </Target>
+
 </Project>
