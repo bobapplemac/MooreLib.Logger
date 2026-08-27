@@ -891,7 +891,7 @@ public sealed class LoggerTests
                 IncludeFileTimestamp = false,
                 IncludeFileLogLevel = false,
                 IncludeFileEntryMetadata = false,
-                ArchivePolicy = new FileArchivePolicy.Daily(MaximumArchiveDays: 5)
+                ArchivePolicy = new FileArchivePolicy.Daily(maximumArchiveDays: 5)
             });
             log.SetTestRolloverProviders(currentDateProvider: () => simulatedDate);
             log.EnableFileLogging(path);

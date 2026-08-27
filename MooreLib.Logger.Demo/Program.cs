@@ -25,8 +25,8 @@ internal class Program
             InlineResumePrefix = "↳ ",
             EntryIndentSize = 2,
             ArchivePolicy = new FileArchivePolicy.BySize(
-                MaximumFileSizeBytes: 10 * 1024 * 1024,
-                MaximumArchiveFiles: 5)
+                maximumFileSizeBytes: 10 * 1024 * 1024,
+                maximumArchiveFiles: 5)
         });
 
         log.EnableFileLogging("MooreLib.Logger.Demo.log");

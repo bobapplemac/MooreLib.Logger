@@ -1,71 +1,72 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Andrew J. Moore
 
-namespace MooreLib.Logging;
-
-public sealed partial class Logger
+namespace MooreLib.Logging
 {
-    /// <summary>Enables console logging while preserving the current file destination state.</summary>
-    /// <remarks>
-    /// The change is prospective: previously suppressed content is not replayed. If an inline physical line
-    /// is currently open, it is terminated against the old destination set before console logging is enabled.
-    /// </remarks>
-    public void EnableConsoleLogging()
+    public sealed partial class Logger
     {
-        lock (_coordinatorSync)
+        /// <summary>Enables console logging while preserving the current file destination state.</summary>
+        /// <remarks>
+        /// The change is prospective: previously suppressed content is not replayed. If an inline physical line
+        /// is currently open, it is terminated against the old destination set before console logging is enabled.
+        /// </remarks>
+        public void EnableConsoleLogging()
         {
-            ThrowIfNotActiveLocked();
-
-            if (IsConsoleDestinationEnabledLocked())
+            lock (_coordinatorSync)
             {
-                return;
-            }
+                ThrowIfNotActiveLocked();
 
-            if (_usesTestBackend)
-            {
+                if (IsConsoleDestinationEnabledLocked())
+                {
+                    return;
+                }
+
+                if (_usesTestBackend)
+                {
+                    CloseOpenPhysicalLineLocked(markInterrupted: true);
+                    _testConsoleLoggingEnabled = true;
+                    return;
+                }
+
+                var prepared = PrepareConfigurationLocked(_fileLogPath, consoleLoggingEnabled: true);
+
                 CloseOpenPhysicalLineLocked(markInterrupted: true);
-                _testConsoleLoggingEnabled = true;
-                return;
+                _logFactory.Flush(_options.DisposeFlushTimeout);
+                ApplyPreparedConfigurationLocked(prepared);
+                CommitPreparedConfigurationLocked(prepared);
             }
-
-            var prepared = PrepareConfigurationLocked(_fileLogPath, consoleLoggingEnabled: true);
-
-            CloseOpenPhysicalLineLocked(markInterrupted: true);
-            _logFactory.Flush(_options.DisposeFlushTimeout);
-            ApplyPreparedConfigurationLocked(prepared);
-            CommitPreparedConfigurationLocked(prepared);
         }
-    }
 
-    /// <summary>Disables console logging while preserving the current file destination state.</summary>
-    /// <remarks>
-    /// The change is prospective. If an inline physical line is currently open, it is terminated against
-    /// the old destination set before console logging is disabled.
-    /// </remarks>
-    public void DisableConsoleLogging()
-    {
-        lock (_coordinatorSync)
+        /// <summary>Disables console logging while preserving the current file destination state.</summary>
+        /// <remarks>
+        /// The change is prospective. If an inline physical line is currently open, it is terminated against
+        /// the old destination set before console logging is disabled.
+        /// </remarks>
+        public void DisableConsoleLogging()
         {
-            ThrowIfNotActiveLocked();
-
-            if (!IsConsoleDestinationEnabledLocked())
+            lock (_coordinatorSync)
             {
-                return;
-            }
+                ThrowIfNotActiveLocked();
 
-            if (_usesTestBackend)
-            {
+                if (!IsConsoleDestinationEnabledLocked())
+                {
+                    return;
+                }
+
+                if (_usesTestBackend)
+                {
+                    CloseOpenPhysicalLineLocked(markInterrupted: true);
+                    _testConsoleLoggingEnabled = false;
+                    return;
+                }
+
+                var prepared = PrepareConfigurationLocked(_fileLogPath, consoleLoggingEnabled: false);
+
                 CloseOpenPhysicalLineLocked(markInterrupted: true);
-                _testConsoleLoggingEnabled = false;
-                return;
+                _logFactory.Flush(_options.DisposeFlushTimeout);
+                ApplyPreparedConfigurationLocked(prepared);
+                CommitPreparedConfigurationLocked(prepared);
             }
-
-            var prepared = PrepareConfigurationLocked(_fileLogPath, consoleLoggingEnabled: false);
-
-            CloseOpenPhysicalLineLocked(markInterrupted: true);
-            _logFactory.Flush(_options.DisposeFlushTimeout);
-            ApplyPreparedConfigurationLocked(prepared);
-            CommitPreparedConfigurationLocked(prepared);
         }
     }
 }

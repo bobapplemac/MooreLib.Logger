@@ -13,10 +13,12 @@ Log.Error("Unable to connect to the server.", exception);
 but also supports logical multi-line entries and true incremental writes:
 
 ```csharp
-using var entry = Log.BeginInlineInfo("Connecting to PLC - ");
-Log.Write("CONNECTED - ");
-Log.Write("PROGRAM: Main - ");
-Log.CompleteEntry("SUCCESS");
+using (var entry = Log.BeginInlineInfo("Connecting to PLC - "))
+{
+    Log.Write("CONNECTED - ");
+    Log.Write("PROGRAM: Main - ");
+    Log.CompleteEntry("SUCCESS");
+}
 ```
 
 which can render as a single progressively written physical line:
@@ -27,8 +29,8 @@ which can render as a single progressively written physical line:
 
 The same physical fragments are written immediately to each enabled destination. Console and file output can be enabled independently, so MooreLib.Logger is useful for interactive applications, file-only services, or applications that want both without giving up natural `Write(...)` / `WriteLine(...)` style progress output.
 
-> **Current source version:** 1.20.0 (revision r20)  
-> **Target framework:** .NET 8  
+> **Current source version:** 1.21.0 (revision r21)  
+> **Target frameworks:** .NET 8 and .NET Framework 4.6.2  
 > **Logging backend:** NLog 6.2  
 > **Public namespace:** `MooreLib.Logging`  
 > **License:** MIT
@@ -110,8 +112,17 @@ MooreLib.Logger is **not intended to replace NLog**. NLog remains responsible fo
 
 ## Requirements
 
-- .NET 8.0 or later
+- .NET 8.0 or later, or
+- .NET Framework 4.6.2 or later
 - NLog 6.2.0 or later
+
+MooreLib.Logger is multi-targeted from one canonical source base:
+
+```xml
+<TargetFrameworks>net8.0;net462</TargetFrameworks>
+```
+
+The common library source is intentionally kept compatible with the C# 7.3 language baseline used by .NET Framework 4.6.2 rather than relying on a newer compiler for the legacy target. Modern syntax conveniences are avoided where an equivalent common implementation can be used on both targets. Conditional compilation is reserved for genuine framework API differences.
 
 The project currently references:
 
@@ -166,19 +177,23 @@ Then use the normal public namespace and API:
 ```csharp
 using MooreLib.Logging;
 
-using var Log = new Logger();
-Log.Info("Application starting.");
+using (var Log = new Logger())
+{
+    Log.Info("Application starting.");
+}
 ```
 
 The portable file is **generated output, not canonical source**. Do not edit it directly. Changes should be made to the normal source files under `MooreLib.Logger/` and then rebundled. The generated header identifies the source version, repository, license, and NLog dependency so the file remains understandable when used independently of the repository.
 
-The source version embedded in the generated header is read directly from the library project's `FileVersion`. For r20, the generated file therefore reports:
+The source version embedded in the generated header is read directly from the library project's `FileVersion`. For r21, the generated file therefore reports:
 
 ```text
-Source version: 1.20.0.0
+Source version: 1.21.0.0
 ```
 
 The generator is `Portable/SourceBundler`. It uses Roslyn to preserve C# structure while combining the canonical source files, hoisting compilation-unit directives, normalizing file-scoped namespaces where necessary, and preserving source formatting as closely as possible. The generated `Portable/artifacts/` directory is intentionally excluded from source control.
+
+Beginning with r21, the generated single-file distribution is also compatible with .NET Framework 4.6.2 / C# 7.3. The portable source does not require a newer Roslyn compiler merely to target .NET Framework 4.6.2. The same generated source remains usable from modern .NET projects as well.
 
 To generate and validate the portable distribution locally:
 
@@ -195,28 +210,29 @@ The portable build project performs the complete workflow: it builds `SourceBund
 ```csharp
 using MooreLib.Logging;
 
-using var Log = new Logger(new LoggerOptions
+using (var Log = new Logger(new LoggerOptions
 {
-    IncludeConsoleTimestamp = true,
-    IncludeConsoleLogLevel = true,
-    IncludeFileTimestamp = true,
-    IncludeFileLogLevel = true,
-    TimestampFormat = "yyyy-MM-dd HH:mm:ss",
-    TimestampZone = LogTimestampZone.Local,
-    MessageSeparator = " - ",
-    ConsoleLoggingEnabled = true,
-    MinimumConsoleLevel = LogLevel.Debug,
-    MinimumStandardErrorLevel = LogLevel.Error,
-    MinimumFileLevel = LogLevel.Trace,
-    ArchivePolicy = new FileArchivePolicy.BySize(
-        MaximumFileSizeBytes: 10 * 1024 * 1024,
-        MaximumArchiveFiles: 5)
-});
-
-Log.EnableFileLogging("Application.log");
-
-Log.Info("Application starting.");
-Log.Debug("Configuration loaded.");
+        IncludeConsoleTimestamp = true,
+        IncludeConsoleLogLevel = true,
+        IncludeFileTimestamp = true,
+        IncludeFileLogLevel = true,
+        TimestampFormat = "yyyy-MM-dd HH:mm:ss",
+        TimestampZone = LogTimestampZone.Local,
+        MessageSeparator = " - ",
+        ConsoleLoggingEnabled = true,
+        MinimumConsoleLevel = LogLevel.Debug,
+        MinimumStandardErrorLevel = LogLevel.Error,
+        MinimumFileLevel = LogLevel.Trace,
+        ArchivePolicy = new FileArchivePolicy.BySize(
+            maximumFileSizeBytes: 10 * 1024 * 1024,
+            maximumArchiveFiles: 5)
+    }))
+    {
+        Log.EnableFileLogging("Application.log");
+    
+        Log.Info("Application starting.");
+        Log.Debug("Configuration loaded.");
+}
 ```
 
 A typical line might look like:
@@ -283,11 +299,13 @@ Example:
 A logical entry groups several physical lines while keeping them visually related:
 
 ```csharp
-using var entry = Log.BeginInfo("Deploying application.");
-
-Log.WriteLine("Configuration validated.");
-Log.WriteLine("Package downloaded.");
-Log.CompleteEntry("Deployment complete.");
+using (var entry = Log.BeginInfo("Deploying application."))
+{
+    
+    Log.WriteLine("Configuration validated.");
+    Log.WriteLine("Package downloaded.");
+    Log.CompleteEntry("Deployment complete.");
+}
 ```
 
 Example output:
@@ -302,15 +320,17 @@ Example output:
 `Begin...()` returns a `LogEntry` handle. The handle implements `IDisposable`, so an early return or exception can still deterministically clean up an entry:
 
 ```csharp
-using var entry = Log.BeginInfo("Processing request.");
-
-if (!Validate())
+using (var entry = Log.BeginInfo("Processing request."))
 {
-    Log.CompleteEntry("Validation failed.");
-    return;
+    
+    if (!Validate())
+    {
+        Log.CompleteEntry("Validation failed.");
+        return;
+    }
+    
+    Log.CompleteEntry("Complete.");
 }
-
-Log.CompleteEntry("Complete.");
 ```
 
 Disposing an already completed entry is harmless.
@@ -322,12 +342,14 @@ Disposing an already completed entry is harmless.
 Progressive output is one of the primary reasons MooreLib.Logger exists.
 
 ```csharp
-using var entry = Log.BeginInlineInfo("Connecting to PLC - ");
-
-Log.Write("CONNECTED - ");
-Log.Write("NAME: PLC01 - ");
-Log.Write("PROGRAM: Main - ");
-Log.CompleteEntry("SUCCESS");
+using (var entry = Log.BeginInlineInfo("Connecting to PLC - "))
+{
+    
+    Log.Write("CONNECTED - ");
+    Log.Write("NAME: PLC01 - ");
+    Log.Write("PROGRAM: Main - ");
+    Log.CompleteEntry("SUCCESS");
+}
 ```
 
 The physical line remains open between calls:
@@ -364,14 +386,16 @@ Log.WriteLine("Package downloaded.");
 A single logical entry can freely mix line-oriented and partial-line output:
 
 ```csharp
-using var entry = Log.BeginInfo("Processing package.");
-
-Log.WriteLine("Metadata validated.");
-Log.Write("Downloading: ");
-Log.Write("25% ");
-Log.Write("50% ");
-Log.WriteLine("100%");
-Log.CompleteEntry("Processing complete.");
+using (var entry = Log.BeginInfo("Processing package."))
+{
+    
+    Log.WriteLine("Metadata validated.");
+    Log.Write("Downloading: ");
+    Log.Write("25% ");
+    Log.Write("50% ");
+    Log.WriteLine("100%");
+    Log.CompleteEntry("Processing complete.");
+}
 ```
 
 Example output:
@@ -390,12 +414,14 @@ Example output:
 `CompleteEntryInline(...)` begins the terminal `└` line but leaves that physical line open:
 
 ```csharp
-using var entry = Log.BeginInfo("Running validation.");
-
-Log.WriteLine("Checks complete.");
-Log.CompleteEntryInline("Result: ");
-Log.Write("SUCCESS");
-Log.CompleteEntry();
+using (var entry = Log.BeginInfo("Running validation."))
+{
+    
+    Log.WriteLine("Checks complete.");
+    Log.CompleteEntryInline("Result: ");
+    Log.Write("SUCCESS");
+    Log.CompleteEntry();
+}
 ```
 
 Example:
@@ -415,25 +441,27 @@ Once an entry has entered terminal-inline completion, it is committed to complet
 Logical entries can be nested beneath an active parent.
 
 ```csharp
-using var parent = Log.BeginInfo("Updating PLC clock.");
-
-Log.WriteLine("Connected.");
-
-using (var identity = Log.BeginInfo(parent, "Reading controller identity."))
+using (var parent = Log.BeginInfo("Updating PLC clock."))
 {
-    Log.WriteLine("Product: ControlLogix");
-    Log.WriteLine("Program: MainProgram");
-    Log.CompleteEntry(identity, "Identity complete.");
-}
-
-using (var clock = Log.BeginInfo(parent, "Synchronizing clock."))
+    
+    Log.WriteLine("Connected.");
+    
+    using (var identity = Log.BeginInfo(parent, "Reading controller identity."))
 {
-    Log.WriteLine("Current drift: 1.42 seconds.");
-    Log.WriteLine("Writing controller time.");
-    Log.CompleteEntry(clock, "Clock synchronized.");
+        Log.WriteLine("Product: ControlLogix");
+        Log.WriteLine("Program: MainProgram");
+        Log.CompleteEntry(identity, "Identity complete.");
 }
-
-Log.CompleteEntry(parent, "PLC clock update complete.");
+    
+    using (var clock = Log.BeginInfo(parent, "Synchronizing clock."))
+{
+        Log.WriteLine("Current drift: 1.42 seconds.");
+        Log.WriteLine("Writing controller time.");
+        Log.CompleteEntry(clock, "Clock synchronized.");
+}
+    
+    Log.CompleteEntry(parent, "PLC clock update complete.");
+    }
 ```
 
 Nested entries use ancestry-aware tree rendering:
@@ -477,15 +505,17 @@ Parent
 `CompleteWithChild(...)` creates one final one-shot child beneath an active parent and completes the parent as part of the same coordinated operation. Because MooreLib knows before emission that this child is terminal, its opening branch can use `└` immediately and any multiline detail can be rendered beneath it without buffering the complete tree.
 
 ```csharp
-using var entry = Log.BeginInfo("Connecting to PLC.");
-Log.WriteLine(entry, "Attempting connection.");
-
-Log.CompleteWithChild(
-    entry,
-    LogLevel.Error,
-    "EXCEPTION" + Environment.NewLine +
-    "Type: System.Net.Sockets.SocketException" + Environment.NewLine +
-    "Message: Connection refused.");
+using (var entry = Log.BeginInfo("Connecting to PLC."))
+{
+    Log.WriteLine(entry, "Attempting connection.");
+    
+    Log.CompleteWithChild(
+        entry,
+        LogLevel.Error,
+        "EXCEPTION" + Environment.NewLine +
+        "Type: System.Net.Sockets.SocketException" + Environment.NewLine +
+        "Message: Connection refused.");
+}
 ```
 
 Example output:
@@ -507,11 +537,15 @@ This is different from `CompleteEntry(entry, message)`, which completes the supp
 When an entry has emitted visible tree content but is deliberately completed without a terminal message, r16 and later emit `┴` to close that tree visually:
 
 ```csharp
-using var parent = Log.BeginInfo("Parent");
-using var child = Log.BeginError(parent, "EXCEPTION");
-Log.WriteLine(child, "Type: SocketException");
-Log.CompleteEntry(child, "Message: Connection refused.");
-Log.CompleteEntry(parent);
+using (var parent = Log.BeginInfo("Parent"))
+{
+    using (var child = Log.BeginError(parent, "EXCEPTION"))
+{
+    Log.WriteLine(child, "Type: SocketException");
+    Log.CompleteEntry(child, "Message: Connection refused.");
+    Log.CompleteEntry(parent);
+}
+    }
 ```
 
 ```text
@@ -531,11 +565,13 @@ Parent
 A child event can also be attached without creating a child entry that must later be completed:
 
 ```csharp
-using var entry = Log.BeginInfo("Deploying application.");
-
-Log.Info(entry, "Package validated.");
-Log.Warn(entry, "Fallback mirror selected.");
-Log.CompleteEntry("Deployment complete.");
+using (var entry = Log.BeginInfo("Deploying application."))
+{
+    
+    Log.Info(entry, "Package validated.");
+    Log.Warn(entry, "Fallback mirror selected.");
+    Log.CompleteEntry("Deployment complete.");
+}
 ```
 
 Exception-bearing attached events are supported as well:
@@ -560,10 +596,13 @@ Log.Info(
 Properties may also be attached to logical entries:
 
 ```csharp
-using var entry = Log.BeginInfo(
+using (var entry = Log.BeginInfo(
     "Deploying package.",
     new LogProperty("Package", "Runtime"),
-    new LogProperty("Version", "2.4.1"));
+    new LogProperty("Version", "2.4.1")))
+{
+    // Additional entry output...
+}
 ```
 
 Child entries inherit their parent's properties. A property supplied by the child overrides an inherited value with the same name.
@@ -593,20 +632,24 @@ MooreLib.Logger does not implement a remote logging database or transport layer.
 The current logical entry is tracked with `AsyncLocal`, which follows .NET `ExecutionContext` rather than a specific physical thread. Ambient entry context therefore normally flows through `async` / `await`, `Task.Run(...)`, and ordinary `Thread` execution-context flow:
 
 ```csharp
-using var entry = Log.BeginInfo("Processing request.");
-
-await DoWorkAsync();
-
-Log.WriteLine("Async work complete.");
-Log.CompleteEntry("Done.");
+using (var entry = Log.BeginInfo("Processing request."))
+{
+    
+    await DoWorkAsync();
+    
+    Log.WriteLine("Async work complete.");
+    Log.CompleteEntry("Done.");
+}
 ```
 
 For work that must target a specific entry explicitly, use the returned `LogEntry` handle:
 
 ```csharp
-using var entry = Log.BeginInfo("Processing.");
-
-Log.WriteLine(entry, "Explicitly attached line.");
+using (var entry = Log.BeginInfo("Processing."))
+{
+    
+    Log.WriteLine(entry, "Explicitly attached line.");
+}
 ```
 
 `LogEntry.EntrySequence` is available as a read-only diagnostic correlation value. It is scoped to the owning logger instance and is not an API lookup key. `Logger.InstanceId` provides the GUID portion of the structured identity when logs from multiple logger instances are aggregated.
@@ -628,13 +671,15 @@ If another visible event needs to write while an inline entry owns an open line,
 Example:
 
 ```csharp
-using var entry = Log.BeginInlineInfo("Downloading - ");
-Log.Write("25% ");
-
-Log.Warn("Network latency detected.");
-
-Log.Write("50% ");
-Log.CompleteEntry("100%");
+using (var entry = Log.BeginInlineInfo("Downloading - "))
+{
+    Log.Write("25% ");
+    
+    Log.Warn("Network latency detected.");
+    
+    Log.Write("50% ");
+    Log.CompleteEntry("100%");
+}
 ```
 
 Conceptually:
@@ -690,12 +735,13 @@ Equivalent CR and CRLF sequences behave the same way.
 Console logging is enabled by default and may be disabled at construction time for file-only or otherwise non-interactive applications:
 
 ```csharp
-using var Log = new Logger(new LoggerOptions
+using (var Log = new Logger(new LoggerOptions
 {
-    ConsoleLoggingEnabled = false
-});
-
-Log.EnableFileLogging("Application.log");
+        ConsoleLoggingEnabled = false
+    }))
+    {
+        Log.EnableFileLogging("Application.log");
+}
 ```
 
 It can also be enabled or disabled dynamically:
@@ -770,8 +816,8 @@ Two archive policies are available.
 
 ```csharp
 ArchivePolicy = new FileArchivePolicy.BySize(
-    MaximumFileSizeBytes: 10 * 1024 * 1024,
-    MaximumArchiveFiles: 5)
+    maximumFileSizeBytes: 10 * 1024 * 1024,
+    maximumArchiveFiles: 5)
 ```
 
 Defaults:
@@ -793,7 +839,7 @@ The size threshold is intentionally approximate. If the threshold is crossed whi
 
 ```csharp
 ArchivePolicy = new FileArchivePolicy.Daily(
-    MaximumArchiveDays: 14)
+    maximumArchiveDays: 14)
 ```
 
 If the date changes while a physical line is open, that line is allowed to finish in the current file. Rollover occurs before the next eligible physical line.
@@ -916,11 +962,13 @@ var options = new LoggerOptions
     EntryIndentSize = 2,
 
     ArchivePolicy = new FileArchivePolicy.BySize(
-        MaximumFileSizeBytes: 25 * 1024 * 1024,
-        MaximumArchiveFiles: 10)
+        maximumFileSizeBytes: 25 * 1024 * 1024,
+        maximumArchiveFiles: 10)
 };
 
-using var Log = new Logger(options);
+using (var Log = new Logger(options))
+{
+}
 ```
 
 Options are validated during construction so configuration errors fail early rather than during an unrelated logging operation.
@@ -961,8 +1009,12 @@ FileFragmentLayout = "${message}"
 Both `Logger` and `LogEntry` implement deterministic lifetime behavior.
 
 ```csharp
-using var Log = new Logger();
-using var entry = Log.BeginInfo("Operation.");
+using (var Log = new Logger())
+{
+    using (var entry = Log.BeginInfo("Operation."))
+{
+}
+    }
 ```
 
 `LogEntry.Dispose()` completes/unregisters the entry if it is still active and is idempotent when the entry has already been completed explicitly.
@@ -1203,7 +1255,14 @@ dotnet restore
 dotnet build -c Release
 ```
 
-A normal solution build includes the portable distribution workflow. `MooreLib.Logger.Portable.msbuildproj` builds `SourceBundler`, generates `Portable/artifacts/MooreLib.Logger.cs`, and runs the portable test project against that generated source. A clean solution build therefore verifies both the canonical library and the standalone source distribution.
+The canonical library multi-targets .NET 8 and .NET Framework 4.6.2. Each target can also be built explicitly:
+
+```bash
+dotnet build MooreLib.Logger/MooreLib.Logger.csproj -c Release -f net8.0
+dotnet build MooreLib.Logger/MooreLib.Logger.csproj -c Release -f net462
+```
+
+A normal project/solution build builds both library targets. A normal solution build also includes the portable distribution workflow. `MooreLib.Logger.Portable.msbuildproj` builds `SourceBundler`, generates `Portable/artifacts/MooreLib.Logger.cs`, and runs the portable test project against that generated source. A clean solution build therefore verifies both the canonical library and the standalone source distribution.
 
 The portable workflow can also be invoked directly:
 
@@ -1349,6 +1408,7 @@ MooreLib.Logger uses a simple `Major.Revision.0` versioning scheme.
 1.18.0  -> revision r18
 1.19.0  -> revision r19
 1.20.0  -> revision r20
+1.21.0  -> revision r21
 ```
 
 The **revision** component is globally monotonic and increments for every released code change, including small fixes. The patch component is reserved and currently remains `0`.
@@ -1379,11 +1439,17 @@ SPDX-License-Identifier: MIT
 
 # Status
 
-Version **1.20.0** corresponds to **r20**. The runtime logging architecture remains substantially complete for its intended purpose: NLog-backed application logging with logical entries, structured properties, ancestry-aware nested tree rendering, and console-style progressive output.
+Version **1.21.0** corresponds to **r21**. The runtime logging architecture remains substantially complete for its intended purpose: NLog-backed application logging with logical entries, structured properties, ancestry-aware nested tree rendering, and console-style progressive output.
 
-r20 adds the portable single-file source distribution and its build/validation pipeline. `Portable/SourceBundler` generates `Portable/artifacts/MooreLib.Logger.cs` directly from the canonical project source, embeds the library `FileVersion` and repository/license information in the generated header, and preserves source formatting while performing the structural transformations needed for a valid combined compilation unit. `MooreLib.Logger.Portable.Tests` then compiles and smoke-tests that exact generated file. The portable orchestration project is included in normal solution builds, so a clean Build Solution validates the standalone distribution alongside the canonical library.
+r21 adds .NET Framework compatibility while retaining the existing .NET 8 target. The canonical library now multi-targets `net8.0` and `net462` from the same source base. The implementation was deliberately backported to a C# 7.3-compatible common syntax baseline rather than requiring a newer compiler for the .NET Framework target.
 
-The r19 configurable console destination and stdout/stderr routing, r18 simplified destination model, and r17 `LogEntry` object-identity/correlation model remain unchanged.
+The compatibility work replaces newer language/runtime conveniences such as records, init-only properties, nullable-reference syntax, switch expressions, modern pattern combinators, range operators, newer argument-validation helpers, and other post-C#-7.3 APIs with equivalent implementations that preserve the existing logging behavior. Conditional compilation is used only where the actual framework API surface differs.
+
+The generated portable `MooreLib.Logger.cs` therefore remains the same canonical implementation and can now be used by both modern .NET applications and .NET Framework 4.6.2 applications, subject to the normal NLog dependency.
+
+As part of the compatibility work, several public configuration/value types that were previously records are now ordinary classes/structs. Practical value semantics are preserved where useful, but record-specific conveniences such as `with`, generated deconstruction, and generated `ToString()` are no longer part of those APIs. The project has not yet made a public compatibility commitment, so this remains within the current pre-public cleanup phase.
+
+r20 introduced the portable single-file source distribution and its build/validation pipeline. r19 added configurable console destination and stdout/stderr routing, r18 simplified the destination model, and r17 established the `LogEntry` object-identity/correlation model.
 
 Future changes should favor:
 

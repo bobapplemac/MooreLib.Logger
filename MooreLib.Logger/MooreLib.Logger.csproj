@@ -1,9 +1,8 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
+	<TargetFrameworks>net8.0;net462</TargetFrameworks>
+    <ImplicitUsings>disable</ImplicitUsings>
     <GenerateDocumentationFile>True</GenerateDocumentationFile>
 	<GenerateDependencyFile>false</GenerateDependencyFile>
     <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -12,11 +11,13 @@
     <Copyright>Copyright 2026 Andrew J. Moore</Copyright>
     <RepositoryUrl>https://github.com/bobapplemac/MooreLib.Logger</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <FileVersion>1.20.0.0</FileVersion>
+    <FileVersion>1.21.0.0</FileVersion>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
     <Title>MooreLib.Logger</Title>
     <ProduceReferenceAssembly>False</ProduceReferenceAssembly>
+    <Nullable>disable</Nullable>
+	<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
@@ -29,6 +30,10 @@
 
   <ItemGroup>
     <PackageReference Include="NLog" Version="6.2.0" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net462'">
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net462" Version="1.0.3" PrivateAssets="All" />
   </ItemGroup>
 
 </Project>
